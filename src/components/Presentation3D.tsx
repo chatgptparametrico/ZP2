@@ -794,6 +794,26 @@ export default function Presentation3D() {
     <div className={`relative w-full h-screen overflow-hidden select-none ${currentTheme.bg}`}>
       <div ref={containerRef} className="absolute inset-0" />
 
+      {/* Mini Cube Navigation - Always visible at top */}
+      <MiniCubeNav
+        boxes={boxes}
+        currentBoxIndex={currentBoxIndex}
+        isDarkMode={isDarkMode}
+        accentColor={currentTheme.accent}
+        isInsideBox={isInsideBox}
+        onNavigate={(index) => {
+          setCurrentBox(index);
+          if (isInsideBox) {
+            exitBox();
+            setTimeout(() => {
+              focusOnBox(index);
+            }, 350);
+          } else {
+            focusOnBox(index);
+          }
+        }}
+      />
+
       {/* Zirkel Logo & Video - Bird view only */}
       {!isInsideBox && showAllUI && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
