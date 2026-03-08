@@ -922,19 +922,27 @@ export default function Presentation3D() {
         </div>
       )}
 
-      {/* Mini rotating cubes navigation */}
-      {isInsideBox && (
+      {/* Mini rotating cubes navigation - ALWAYS visible */}
+      {showAllUI && (
         <MiniCubeNav
           boxes={boxes}
           currentBoxIndex={currentBoxIndex}
           isDarkMode={isDarkMode}
           accentColor={currentTheme.accent}
+          isInsideBox={isInsideBox}
           onNavigate={(index) => {
-            exitBox();
-            setTimeout(() => {
+            if (isInsideBox) {
+              // If inside a box, exit first then enter new box
+              exitBox();
+              setTimeout(() => {
+                setCurrentBox(index);
+                enterBox(index);
+              }, 350);
+            } else {
+              // If in bird view, just focus on the box
               setCurrentBox(index);
-              enterBox(index);
-            }, 350);
+              focusOnBox(index);
+            }
           }}
         />
       )}

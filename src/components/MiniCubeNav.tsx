@@ -8,6 +8,7 @@ interface MiniCubeNavProps {
   isDarkMode: boolean;
   accentColor: string;
   onNavigate: (index: number) => void;
+  isInsideBox?: boolean;
 }
 
 // Inline styles for the cube animation
@@ -22,7 +23,7 @@ const cubeAnimationStyle = `
   }
 `;
 
-export default function MiniCubeNav({ boxes, currentBoxIndex, isDarkMode, accentColor, onNavigate }: MiniCubeNavProps) {
+export default function MiniCubeNav({ boxes, currentBoxIndex, isDarkMode, accentColor, onNavigate, isInsideBox = false }: MiniCubeNavProps) {
   const cubeSize = 32;
   const halfSize = cubeSize / 2;
 
@@ -42,12 +43,12 @@ export default function MiniCubeNav({ boxes, currentBoxIndex, isDarkMode, accent
     <>
       {/* Inject animation keyframes */}
       <style>{cubeAnimationStyle}</style>
-      
-      {/* Container */}
+
+      {/* Container - position varies based on view mode */}
       <div
         style={{
           position: 'fixed',
-          top: '16px',
+          top: isInsideBox ? '16px' : '140px',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 99999,
