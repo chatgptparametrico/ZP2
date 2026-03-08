@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore } from '@/lib/presentation-store';
+import MiniCubeNav from './MiniCubeNav';
 
 export default function Presentation3D() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -921,151 +922,21 @@ export default function Presentation3D() {
         </div>
       )}
 
-      {/* Mini rotating boxes navigation - Always show when inside box */}
-      {isInsideBox && boxes[currentBoxIndex] && (
-        <div 
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto"
-          style={{ display: 'block' }}
-        >
-          <div 
-            className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-            style={{ 
-              backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)',
-              border: `2px solid ${isDarkMode ? 'rgba(0,255,255,0.4)' : 'rgba(34,197,94,0.4)'}`,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-            }}>
-            {boxes.map((box, index) => (
-              <button
-                key={box.id}
-                onClick={() => {
-                  exitBox();
-                  setTimeout(() => {
-                    setCurrentBox(index);
-                    enterBox(index);
-                  }, 350);
-                }}
-                className="relative group cursor-pointer hover:scale-125 transition-transform duration-200"
-                title={box.name}
-                style={{ padding: '4px' }}
-              >
-                {/* Simple rotating cube using CSS */}
-                <div 
-                  className="mini-cube-wrapper"
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    perspective: '80px',
-                    display: 'inline-block'
-                  }}
-                >
-                  <div 
-                    className="mini-cube-inner"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      position: 'relative',
-                      transformStyle: 'preserve-3d',
-                      animation: `rotateCube 3s linear infinite`,
-                      animationDelay: `${index * 0.2}s`
-                    }}
-                  >
-                    {/* Front face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        borderRadius: '4px',
-                        transform: 'translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#4a5568' : '#cbd5e0'),
-                        color: index === currentBoxIndex ? '#fff' : (isDarkMode ? '#a0aec0' : '#4a5563'),
-                        boxShadow: 'inset 0 0 8px rgba(0,0,0,0.2)'
-                      }}
-                    >
-                      {index + 1}
-                    </div>
-                    {/* Back face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        borderRadius: '4px',
-                        transform: 'rotateY(180deg) translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#2d3748' : '#e2e8f0'),
-                        color: '#fff'
-                      }}
-                    >
-                      {index + 1}
-                    </div>
-                    {/* Right face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        borderRadius: '4px',
-                        transform: 'rotateY(90deg) translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#2d3748' : '#e2e8f0')
-                      }}
-                    />
-                    {/* Left face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        borderRadius: '4px',
-                        transform: 'rotateY(-90deg) translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#4a5568' : '#cbd5e0')
-                      }}
-                    />
-                    {/* Top face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        borderRadius: '4px',
-                        transform: 'rotateX(90deg) translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#718096' : '#f7fafc')
-                      }}
-                    />
-                    {/* Bottom face */}
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        borderRadius: '4px',
-                        transform: 'rotateX(-90deg) translateZ(18px)',
-                        backgroundColor: index === currentBoxIndex ? currentTheme.accent : (isDarkMode ? '#1a202c' : '#a0aec0')
-                      }}
-                    />
-                  </div>
-                </div>
-                {/* Glow effect on hover */}
-                <div 
-                  className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  style={{ 
-                    boxShadow: `0 0 20px ${currentTheme.accent}, 0 0 40px ${currentTheme.accent}`,
-                    pointerEvents: 'none'
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Mini rotating cubes navigation */}
+      {isInsideBox && (
+        <MiniCubeNav
+          boxes={boxes}
+          currentBoxIndex={currentBoxIndex}
+          isDarkMode={isDarkMode}
+          accentColor={currentTheme.accent}
+          onNavigate={(index) => {
+            exitBox();
+            setTimeout(() => {
+              setCurrentBox(index);
+              enterBox(index);
+            }, 350);
+          }}
+        />
       )}
 
       {/* Navigation arrows when inside box */}
