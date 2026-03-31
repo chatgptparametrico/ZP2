@@ -3,7 +3,35 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore } from '@/lib/presentation-store';
-import MiniCubeNav from './MiniCubeNav';
+
+const loadMediaAsTexture = (url: string, onLoad: (texture: THREE.Texture) => void) => {
+  if (!url) return;
+  const isVideo = url.startsWith('data:video/') || url.endsWith('.mp4');
+  if (isVideo) {
+    const video = document.createElement('video');
+    video.src = url;
+    video.crossOrigin = 'anonymous';
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.play().catch(e => console.error("Auto-play prevented", e));
+    const texture = new THREE.VideoTexture(video);
+    onLoad(texture);
+  } else {
+    new THREE.TextureLoader().load(url, (texture) => {
+      onLoad(texture);
+    });
+  }
+};
+
+const MediaPreview = ({ src, alt, className }: { src: string; alt?: string; className?: string }) => {
+  const isVideo = src?.startsWith('data:video/') || src?.endsWith('.mp4');
+  if (isVideo) {
+    return <video src={src} className={className} autoPlay loop muted playsInline />;
+  }
+  return <img src={src} alt={alt || 'Media'} className={className} />;
+};
+
 
 export default function Presentation3D() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +72,9 @@ export default function Presentation3D() {
     setMouseEnabled,
     setCurrentSlide,
     loadPresentation,
-    getExportData
+    getExportData,
+    addSlide,
+    removeSlide
   } = usePresentationStore();
 
   // Theme colors - memoized to prevent unnecessary re-renders
@@ -94,25 +124,28 @@ export default function Presentation3D() {
     const wallHeight = boxSize * (2/3);
     const wallWidth = boxSize * aspect;
     
-    const textureLoader = new THREE.TextureLoader();
-    
-    const wallPositions = [
-      { pos: [0, wallHeight / 2, -wallWidth / 2], rot: [0, 0, 0], slideIndex: 0 },
-      { pos: [wallWidth / 2, wallHeight / 2, 0], rot: [0, -Math.PI / 2, 0], slideIndex: 1 },
-      { pos: [0, wallHeight / 2, wallWidth / 2], rot: [0, Math.PI, 0], slideIndex: 2 },
-      { pos: [-wallWidth / 2, wallHeight / 2, 0], rot: [0, Math.PI / 2, 0], slideIndex: 3 },
+    // texture loader replaced with hook
+    const fallbackUrl = '/zirkel/zirkel-logo.png';
+
+    const wallMapping = [
+      { pos: [0, wallHeight / 2, wallWidth / 2], rot: [0, 0, 0], offset: 0, name: 'front' },      
+      { pos: [wallWidth / 2, wallHeight / 2, 0], rot: [0, -Math.PI / 2, 0], offset: 1, name: 'right' }, 
+      { pos: [0, wallHeight / 2, -wallWidth / 2], rot: [0, Math.PI, 0], offset: 2, name: 'back' },    
+      { pos: [-wallWidth / 2, wallHeight / 2, 0], rot: [0, Math.PI / 2, 0], offset: 3, name: 'left' },  
     ];
 
-    wallPositions.forEach((wall, wallIndex) => {
-      const slide = boxData.slides[wallIndex];
+    wallMapping.forEach((wall) => {
+      const slide = boxData.slides[wall.offset] || boxData.slides[0];
+      const imageUrl = slide?.imageUrl || fallbackUrl;
       
       const outerGeometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
       const outerMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
         side: THREE.FrontSide,
         toneMapped: false,
       });
       
-      textureLoader.load(slide.imageUrl, (texture) => {
+      loadMediaAsTexture(imageUrl, (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.toneMapped = false;
         outerMaterial.map = texture;
@@ -122,16 +155,17 @@ export default function Presentation3D() {
       const outerMesh = new THREE.Mesh(outerGeometry, outerMaterial);
       outerMesh.position.set(wall.pos[0], wall.pos[1], wall.pos[2]);
       outerMesh.rotation.set(wall.rot[0], wall.rot[1], wall.rot[2]);
-      outerMesh.userData = { isWall: true, slideIndex: wall.slideIndex, boxId: boxData.id };
+      outerMesh.userData = { isWall: true, slideIndex: wall.offset, boxId: boxData.id };
       group.add(outerMesh);
       
       const innerGeometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
       const innerMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
         side: THREE.FrontSide,
         toneMapped: false,
       });
       
-      textureLoader.load(slide.imageUrl, (texture) => {
+      loadMediaAsTexture(imageUrl, (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.toneMapped = false;
         texture.repeat.x = -1;
@@ -150,7 +184,7 @@ export default function Presentation3D() {
       );
       innerMesh.rotation.set(wall.rot[0], wall.rot[1] + Math.PI, wall.rot[2]);
       group.add(innerMesh);
-      
+
       const frameGeometry = new THREE.EdgesGeometry(outerGeometry);
       const frameMaterial = new THREE.LineBasicMaterial({ color: parseInt(currentTheme.accent.replace('#', '0x')) });
       const frame = new THREE.LineSegments(frameGeometry, frameMaterial);
@@ -161,10 +195,10 @@ export default function Presentation3D() {
 
     const floorGeometry = new THREE.PlaneGeometry(wallWidth, wallWidth);
     const floorMaterial = new THREE.MeshBasicMaterial({ 
-      color: isDarkMode ? 0x1a1a2e : 0xFFFFFF,
+      color: 0xffffff,
       side: THREE.DoubleSide 
     });
-    textureLoader.load(boxData.floorImageUrl, (texture) => {
+    loadMediaAsTexture(boxData.floorImageUrl || fallbackUrl, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       floorMaterial.map = texture;
       floorMaterial.needsUpdate = true;
@@ -174,7 +208,6 @@ export default function Presentation3D() {
     floor.position.y = 0;
     group.add(floor);
     
-    // Shadow
     const shadowGeometry = new THREE.PlaneGeometry(wallWidth * 1.2, wallWidth * 1.2);
     const shadowMaterial = new THREE.MeshBasicMaterial({ 
       color: 0x000000,
@@ -191,10 +224,10 @@ export default function Presentation3D() {
 
     const ceilingGeometry = new THREE.PlaneGeometry(wallWidth, wallWidth);
     const ceilingMaterial = new THREE.MeshBasicMaterial({ 
-      color: isDarkMode ? 0x2a2a3e : 0xE8F4FC,
+      color: 0xffffff,
       side: THREE.DoubleSide 
     });
-    textureLoader.load(boxData.ceilingImageUrl, (texture) => {
+    loadMediaAsTexture(boxData.ceilingImageUrl || fallbackUrl, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       ceilingMaterial.map = texture;
       ceilingMaterial.needsUpdate = true;
@@ -220,7 +253,7 @@ export default function Presentation3D() {
     group.add(pointLight);
 
     return group;
-  }, [isDarkMode, currentTheme.accent]);
+  }, [isDarkMode, currentTheme.accent, currentSlideIndex, boxes]);
 
   // Create inside view for a box
   const createInsideView = useCallback((boxData: { 
@@ -236,27 +269,43 @@ export default function Presentation3D() {
     const wallHeight = boxSize * (2/3);
     const wallWidth = boxSize * aspect;
     
-    const textureLoader = new THREE.TextureLoader();
-    
-    const wallPositions = [
-      { pos: [0, wallHeight / 2, -wallWidth / 2], rot: [0, Math.PI, 0], slideIndex: 0, name: 'back' },
-      { pos: [wallWidth / 2, wallHeight / 2, 0], rot: [0, Math.PI / 2, 0], slideIndex: 1, name: 'right' },
-      { pos: [0, wallHeight / 2, wallWidth / 2], rot: [0, 0, 0], slideIndex: 2, name: 'front' },
-      { pos: [-wallWidth / 2, wallHeight / 2, 0], rot: [0, -Math.PI / 2, 0], slideIndex: 3, name: 'left' },
+    // texture loader replaced with hook
+    const fallbackUrl = '/zirkel/zirkel-logo.png';
+    const numSlides = boxData.slides.length;
+
+    const wallMapping = [
+      { pos: [0, wallHeight / 2, wallWidth / 2], rot: [0, Math.PI, 0], offset: 0, name: 'front' },     
+      { pos: [wallWidth / 2, wallHeight / 2, 0], rot: [0, -Math.PI / 2, 0], offset: 1, name: 'right' },
+      { pos: [0, wallHeight / 2, -wallWidth / 2], rot: [0, 0, 0], offset: 2, name: 'back' },   
+      { pos: [-wallWidth / 2, wallHeight / 2, 0], rot: [0, Math.PI / 2, 0], offset: 3, name: 'left' },
     ];
 
-    wallPositions.forEach((wall) => {
-      const slide = boxData.slides[wall.slideIndex];
+    wallMapping.forEach((wall) => {
+      const baseIndex = currentSlideIndex < numSlides ? currentSlideIndex : 0;
+      let slideIdx = -1;
+      for (let s = 0; s < numSlides; s++) {
+        if (s % 4 === wall.offset) {
+          if (slideIdx === -1 || Math.abs(s - baseIndex) < Math.abs(slideIdx - baseIndex)) {
+            slideIdx = s;
+          }
+        }
+      }
+      if (slideIdx === -1) slideIdx = wall.offset % numSlides;
+
+      const slide = boxData.slides[slideIdx];
+      const imageUrl = slide?.imageUrl || fallbackUrl;
       
       const geometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
       const material = new THREE.MeshBasicMaterial({
         side: THREE.DoubleSide,
         toneMapped: false,
+        color: slide?.imageUrl ? 0xffffff : 0x222222
       });
       
-      textureLoader.load(slide.imageUrl, (texture) => {
+      loadMediaAsTexture(imageUrl, (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.toneMapped = false;
+        texture.needsUpdate = true;
         material.map = texture;
         material.needsUpdate = true;
       });
@@ -264,7 +313,7 @@ export default function Presentation3D() {
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(wall.pos[0], wall.pos[1], wall.pos[2]);
       mesh.rotation.set(wall.rot[0], wall.rot[1], wall.rot[2]);
-      mesh.userData = { isWall: true, slideIndex: wall.slideIndex, boxId: boxData.id, wallName: wall.name };
+      mesh.userData = { isWall: true, slideIndex: slideIdx, boxId: boxData.id, wallName: wall.name };
       group.add(mesh);
 
       const frameGeometry = new THREE.EdgesGeometry(geometry);
@@ -277,13 +326,14 @@ export default function Presentation3D() {
 
     const floorGeometry = new THREE.PlaneGeometry(wallWidth, wallWidth);
     const floorMaterial = new THREE.MeshBasicMaterial({ 
-      color: isDarkMode ? 0x333344 : 0xFFFFFF,
+      color: 0xffffff,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
-    textureLoader.load(boxData.floorImageUrl, (texture) => {
+    loadMediaAsTexture(boxData.floorImageUrl || fallbackUrl, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.toneMapped = false;
+      texture.needsUpdate = true;
       floorMaterial.map = texture;
       floorMaterial.needsUpdate = true;
     });
@@ -295,13 +345,14 @@ export default function Presentation3D() {
 
     const ceilingGeometry = new THREE.PlaneGeometry(wallWidth, wallWidth);
     const ceilingMaterial = new THREE.MeshBasicMaterial({ 
-      color: isDarkMode ? 0x444455 : 0xE8F4FC,
+      color: 0xffffff,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
-    textureLoader.load(boxData.ceilingImageUrl, (texture) => {
+    loadMediaAsTexture(boxData.ceilingImageUrl || fallbackUrl, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.toneMapped = false;
+      texture.needsUpdate = true;
       ceilingMaterial.map = texture;
       ceilingMaterial.needsUpdate = true;
     });
@@ -314,33 +365,26 @@ export default function Presentation3D() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     group.add(ambientLight);
 
-    // Add small navigation cubes inside the box - More visible
-    const miniCubeSize = 1.2; // Larger cubes
-    const miniCubeGap = 2.0;
+    const miniCubeSize = 0.4;
+    const miniCubeGap = 1.0;
     const totalWidth = boxes.length * miniCubeGap;
     const startX = -totalWidth / 2 + miniCubeGap / 2;
-    const cubeColor = parseInt(currentTheme.accent.replace('#', '0x'));
+
+    const miniCubesContainer = new THREE.Group();
+    miniCubesContainer.name = 'miniCubesContainer';
 
     boxes.forEach((box, index) => {
       const miniCubeGroup = new THREE.Group();
-
-      // Create mini cube geometry - larger for visibility
       const geometry = new THREE.BoxGeometry(miniCubeSize, miniCubeSize, miniCubeSize);
-
-      // All cubes get bright color, just slightly different for current
-      const isCurrentBox = index === currentBoxIndex;
-      const color = isCurrentBox ? cubeColor : 0x00ffaa; // Bright cyan-green for all
-
-      // Make all cubes bright and emissive
-      const materials = [
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.2 }),
-      ];
-
+      // texture loader replaced
+      const firstSlideUrl = box.slides[0]?.imageUrl || fallbackUrl;
+      const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+      loadMediaAsTexture(firstSlideUrl, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        cubeMaterial.map = tex;
+        cubeMaterial.needsUpdate = true;
+      });
+      const materials = Array(6).fill(cubeMaterial);
       const miniCube = new THREE.Mesh(geometry, materials);
       miniCube.userData = {
         isMiniNavCube: true,
@@ -350,26 +394,17 @@ export default function Presentation3D() {
         floatOffset: Math.random() * Math.PI * 2
       };
       miniCubeGroup.add(miniCube);
-
-      // Add glowing edge - bright cyan
       const edgesGeometry = new THREE.EdgesGeometry(geometry);
-      const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+      const edgesMaterial = new THREE.LineBasicMaterial({ color: parseInt(currentTheme.accent.replace('#', '0x')), linewidth: 1 });
       const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
       miniCubeGroup.add(edges);
-
-      // Position the mini cube - floating at eye level but closer to camera
-      miniCubeGroup.position.set(
-        startX + index * miniCubeGap,
-        wallHeight / 2 + 1, // Slightly higher
-        -3 // Closer to the viewer
-      );
-
-      // Add to group
-      group.add(miniCubeGroup);
+      miniCubeGroup.position.set(startX + index * miniCubeGap, wallHeight / 2 + 1.8, 3);
+      miniCubesContainer.add(miniCubeGroup);
     });
+    group.add(miniCubesContainer);
 
     return group;
-  }, [isDarkMode, currentTheme.accent, currentBoxIndex, boxes]);
+  }, [isDarkMode, currentTheme.accent, currentBoxIndex, currentSlideIndex, boxes]);
 
   const focusOnBox = useCallback((index: number) => {
     const box = boxesRef.current[index];
@@ -595,8 +630,9 @@ export default function Presentation3D() {
           });
         }
 
-        // Handle slide-based camera orientation (0-3 = walls) - Only force angle, not pitch
-        if (currentSlideIndex <= 3) {
+        // Handle slide-based camera orientation (all wall slides)
+        const numSlides = boxes[currentBoxIndex].slides.length;
+        if (currentSlideIndex < numSlides) {
           // Walls - horizontal rotation only, allow free vertical look
           targetCameraAngleRef.current = currentSlideIndex * (Math.PI / 2);
           // Don't force pitch - let user look freely at floor/ceiling/walls
@@ -662,6 +698,16 @@ export default function Presentation3D() {
 
       // Get all mini cube meshes from insideBoxGroup
       const miniCubes: THREE.Mesh[] = [];
+      
+      let containerVisible = true;
+      insideBoxGroupRef.current.traverse((child) => {
+        if (child.name === 'miniCubesContainer') {
+          containerVisible = child.visible;
+        }
+      });
+      
+      if (!containerVisible) return;
+
       insideBoxGroupRef.current.traverse((child) => {
         if (child.userData && child.userData.isMiniNavCube && child instanceof THREE.Mesh) {
           miniCubes.push(child);
@@ -674,12 +720,8 @@ export default function Presentation3D() {
         const clickedObject = intersects[0].object;
         const targetIndex = clickedObject.userData.targetBoxIndex;
         if (targetIndex !== undefined && targetIndex !== currentBoxIndex) {
-          // Navigate to the clicked cube's box
-          exitBox();
-          setTimeout(() => {
-            setCurrentBox(targetIndex);
-            focusOnBox(targetIndex);
-          }, 350);
+          // Navigate directly into the clicked box
+          enterBox(targetIndex);
         }
       }
     };
@@ -804,6 +846,16 @@ export default function Presentation3D() {
         case 'H':
           setShowAllUI((prev) => !prev);
           break;
+        case 'k':
+        case 'K':
+          if (isInsideBox && insideBoxGroupRef.current) {
+            insideBoxGroupRef.current.traverse((child) => {
+              if (child.name === 'miniCubesContainer') {
+                child.visible = !child.visible;
+              }
+            });
+          }
+          break;
         case 'z':
         case 'Z':
           if (isInsideBox) {
@@ -837,12 +889,13 @@ export default function Presentation3D() {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
-      if (slideIndex < 4) {
+      const numSlides = boxes[currentBoxIndex]?.slides.length || 4;
+      if (slideIndex < numSlides) {
         updateSlide(boxId, slideIndex, { imageUrl: dataUrl });
-      } else if (slideIndex === 4) {
-        updateFloor(boxId, dataUrl);
-      } else if (slideIndex === 5) {
-        updateCeiling(boxId, dataUrl);
+      } else if (slideIndex === numSlides) {
+        updateFloor(boxId, { imageUrl: dataUrl });
+      } else if (slideIndex === numSlides + 1) {
+        updateCeiling(boxId, { imageUrl: dataUrl });
       }
     };
     reader.readAsDataURL(file);
@@ -874,22 +927,26 @@ export default function Presentation3D() {
 
   // Get current image based on slide index
   const getCurrentImage = () => {
-    if (!boxes[currentBoxIndex]) return '';
-    if (currentSlideIndex < 4) {
-      return boxes[currentBoxIndex].slides[currentSlideIndex]?.imageUrl || '';
-    } else if (currentSlideIndex === 4) {
-      return boxes[currentBoxIndex].floorImageUrl;
+    if (!boxes[currentBoxIndex]) return '/zirkel/zirkel-logo.png';
+    const numSlides = boxes[currentBoxIndex].slides.length;
+    let url = '';
+    if (currentSlideIndex < numSlides) {
+      url = boxes[currentBoxIndex].slides[currentSlideIndex]?.imageUrl || '';
+    } else if (currentSlideIndex === numSlides) {
+      url = boxes[currentBoxIndex].floorImageUrl;
     } else {
-      return boxes[currentBoxIndex].ceilingImageUrl;
+      url = boxes[currentBoxIndex].ceilingImageUrl;
     }
+    return url || '/zirkel/zirkel-logo.png';
   };
 
   // Get current subtitle
   const getCurrentSubtitle = () => {
     if (!boxes[currentBoxIndex]) return '';
-    if (currentSlideIndex < 4) {
+    const numSlides = boxes[currentBoxIndex].slides.length;
+    if (currentSlideIndex < numSlides) {
       return boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle || '';
-    } else if (currentSlideIndex === 4) {
+    } else if (currentSlideIndex === numSlides) {
       return boxes[currentBoxIndex].floorSubtitle;
     } else {
       return boxes[currentBoxIndex].ceilingSubtitle;
@@ -900,20 +957,6 @@ export default function Presentation3D() {
     <div className={`relative w-full h-screen overflow-hidden select-none ${currentTheme.bg}`}>
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Mini Cube Navigation - Bird view (outside box) at top of screen */}
-      {!isInsideBox && (
-        <MiniCubeNav
-          boxes={boxes}
-          currentBoxIndex={currentBoxIndex}
-          isDarkMode={isDarkMode}
-          accentColor={currentTheme.accent}
-          isInsideBox={false}
-          onNavigate={(index) => {
-            setCurrentBox(index);
-            focusOnBox(index);
-          }}
-        />
-      )}
 
       {/* Zirkel Logo & Video - Bird view only */}
       {!isInsideBox && showAllUI && (
@@ -966,6 +1009,7 @@ export default function Presentation3D() {
                   <li className="flex items-center gap-2">⏎ Enter: Entrar</li>
                   <li className="flex items-center gap-2">⎋ Esc: Salir</li>
                   <li className="flex items-center gap-2">1-6 Ir a cara</li>
+                  <li className="flex items-center gap-2">k Ocultar menú</li>
                 </ul>
               </div>
             )}
@@ -1047,7 +1091,10 @@ export default function Presentation3D() {
       {isInsideBox && boxes[currentBoxIndex] && (
         <>
           <button
-            onClick={() => setCurrentSlide((currentSlideIndex - 1 + 6) % 6)}
+            onClick={() => {
+              const total = boxes[currentBoxIndex].slides.length + 2;
+              setCurrentSlide((currentSlideIndex - 1 + total) % total);
+            }}
             className={`absolute left-6 top-1/2 -translate-y-1/2 z-30 w-12 h-24 flex items-center justify-center ${currentTheme.panelBg} hover:opacity-80 transition-all rounded-xl backdrop-blur-md group border ${currentTheme.border} shadow-lg`}
             style={{ backgroundColor: `rgba(${isDarkMode ? '0,0,0,0.4' : '255,255,255,0.7'})` }}
           >
@@ -1057,7 +1104,10 @@ export default function Presentation3D() {
           </button>
           
           <button
-            onClick={() => setCurrentSlide((currentSlideIndex + 1) % 6)}
+            onClick={() => {
+              const total = boxes[currentBoxIndex].slides.length + 2;
+              setCurrentSlide((currentSlideIndex + 1) % total);
+            }}
             className={`absolute right-6 top-1/2 -translate-y-1/2 z-30 w-12 h-24 flex items-center justify-center ${currentTheme.panelBg} hover:opacity-80 transition-all rounded-xl backdrop-blur-md group border ${currentTheme.border} shadow-lg`}
             style={{ backgroundColor: `rgba(${isDarkMode ? '0,0,0,0.4' : '255,255,255,0.7'})` }}
           >
@@ -1068,8 +1118,8 @@ export default function Presentation3D() {
         </>
       )}
 
-      {/* Current subtitle display when inside box - walls only */}
-      {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < 4 && showAllUI && (
+      {/* Current subtitle display when inside box - always visible regardless of UI toggle */}
+      {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-20 w-full max-w-2xl px-4">
           <div className="text-center">
             <h2 
@@ -1181,27 +1231,61 @@ export default function Presentation3D() {
             <div className="flex items-center justify-between mb-3">
               <span className={`${currentTheme.text} font-semibold text-lg`}>{boxes[currentBoxIndex]?.name}</span>
               <span className="text-sm px-3 py-1 rounded-full" style={{ color: currentTheme.accent, backgroundColor: `${currentTheme.accent}20` }}>
-                {currentSlideIndex < 4 ? `Pared ${currentSlideIndex + 1}` : (currentSlideIndex === 4 ? 'Piso' : 'Techo')} ({currentSlideIndex + 1}/6)
+                {currentSlideIndex < boxes[currentBoxIndex].slides.length ? `Pared ${currentSlideIndex + 1}` : (currentSlideIndex === boxes[currentBoxIndex].slides.length ? 'Piso' : 'Techo')} ({currentSlideIndex + 1}/{boxes[currentBoxIndex].slides.length + 2})
               </span>
             </div>
             
-            {/* Slide buttons 1-6 */}
-            <div className="flex gap-2 justify-center mb-4">
-              {[1, 2, 3, 4, 5, 6].map((num) => (
+            {/* Slide buttons - dynamic based on current box's slides, + add/remove buttons */}
+            <div className="flex gap-2 items-center justify-center mb-4 flex-wrap">
+              {boxes[currentBoxIndex].slides.map((_, idx) => (
                 <button
-                  key={num}
-                  onClick={() => setCurrentSlide(num - 1)}
+                  key={idx}
+                  onClick={() => setCurrentSlide(idx)}
                   className={`w-10 h-10 rounded-xl font-medium transition text-sm ${
-                    num - 1 === currentSlideIndex
+                    idx === currentSlideIndex
                       ? 'text-white shadow-lg'
                       : `${currentTheme.text} hover:opacity-70 border ${currentTheme.border}`
                   }`}
-                  style={num - 1 === currentSlideIndex ? { backgroundColor: currentTheme.accent } : { backgroundColor: isDarkMode ? 'rgba(55,65,81,0.5)' : 'rgba(243,244,246,1)' }}
-                  title={num <= 4 ? `Pared ${num}` : (num === 5 ? 'Piso' : 'Techo')}
+                  style={idx === currentSlideIndex ? { backgroundColor: currentTheme.accent } : { backgroundColor: isDarkMode ? 'rgba(55,65,81,0.5)' : 'rgba(243,244,246,1)' }}
+                  title={`Pared ${idx + 1}`}
                 >
-                  {num}
+                  {idx + 1}
                 </button>
               ))}
+              {/* Floor and ceiling */}
+              {[{ label: 'P', title: 'Piso', idx: boxes[currentBoxIndex].slides.length }, { label: 'T', title: 'Techo', idx: boxes[currentBoxIndex].slides.length + 1 }].map(({ label, title, idx }) => (
+                <button
+                  key={title}
+                  onClick={() => setCurrentSlide(idx)}
+                  className={`w-10 h-10 rounded-xl font-medium transition text-sm ${
+                    idx === currentSlideIndex
+                      ? 'text-white shadow-lg'
+                      : `${currentTheme.text} hover:opacity-70 border ${currentTheme.border}`
+                  }`}
+                  style={idx === currentSlideIndex ? { backgroundColor: currentTheme.accent } : { backgroundColor: isDarkMode ? 'rgba(55,65,81,0.5)' : 'rgba(243,244,246,1)' }}
+                  title={title}
+                >
+                  {label}
+                </button>
+              ))}
+              {/* Separator + add/remove buttons */}
+              <div className="w-px h-8 bg-gray-500/30 mx-1" />
+              <button
+                onClick={() => addSlide(currentBoxIndex)}
+                className="w-10 h-10 rounded-xl font-bold transition text-sm bg-green-500/20 text-green-400 border border-green-500/50 hover:bg-green-500/40"
+                title="Agregar imagen"
+              >➕</button>
+              <button
+                onClick={() => {
+                  const n = boxes[currentBoxIndex].slides.length;
+                  if (n > 1) {
+                    removeSlide(currentBoxIndex);
+                    if (currentSlideIndex >= n - 1) setCurrentSlide(n - 2);
+                  }
+                }}
+                className="w-10 h-10 rounded-xl font-bold transition text-sm bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/40"
+                title="Borrar última imagen"
+              >➖</button>
             </div>
 
             {/* Edit controls - Horizontal layout */}
@@ -1209,12 +1293,12 @@ export default function Presentation3D() {
               {/* Image preview */}
               <div className="flex-shrink-0">
                 <label className={`${currentTheme.textMuted} text-xs block mb-1.5 uppercase tracking-wider`}>
-                  {currentSlideIndex < 4 ? 'Pared' : (currentSlideIndex === 4 ? 'Piso' : 'Techo')} {currentSlideIndex + 1}
+                  {currentSlideIndex < boxes[currentBoxIndex].slides.length ? 'Pared' : (currentSlideIndex === boxes[currentBoxIndex].slides.length ? 'Piso' : 'Techo')} {currentSlideIndex + 1}
                 </label>
                 <label className={`block w-32 h-24 rounded-xl overflow-hidden border-2 ${currentTheme.border} cursor-pointer transition relative group`}
                   style={{ backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb' }}
                 >
-                  <img
+                  <MediaPreview
                     src={getCurrentImage()}
                     alt={`Cara ${currentSlideIndex + 1}`}
                     className="w-full h-full object-cover"
@@ -1224,7 +1308,7 @@ export default function Presentation3D() {
                   </div>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/mp4,video/x-m4v,video/*"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1241,13 +1325,17 @@ export default function Presentation3D() {
                   type="text"
                   value={getCurrentSubtitle()}
                   onChange={(e) => {
-                    if (currentSlideIndex < 4) {
+                    const numSlides = boxes[currentBoxIndex].slides.length;
+                    if (currentSlideIndex < numSlides) {
                       updateSlide(boxes[currentBoxIndex].id, currentSlideIndex, { subtitle: e.target.value });
+                    } else if (currentSlideIndex === numSlides) {
+                      updateFloor(boxes[currentBoxIndex].id, { subtitle: e.target.value });
+                    } else if (currentSlideIndex === numSlides + 1) {
+                      updateCeiling(boxes[currentBoxIndex].id, { subtitle: e.target.value });
                     }
                   }}
                   className={`w-full ${isDarkMode ? 'bg-gray-800/80 text-white border-gray-600 focus:border-cyan-400' : 'bg-gray-50 text-gray-800 border-gray-200 focus:border-[#22C55E]'} px-4 py-2.5 rounded-xl text-sm border focus:ring-2 focus:outline-none transition`}
                   placeholder="Editar subtítulo..."
-                  disabled={currentSlideIndex >= 4}
                 />
               </div>
             </div>
@@ -1272,8 +1360,8 @@ export default function Presentation3D() {
                   style={{ '--theme-accent': currentTheme.accent } as React.CSSProperties}
                   onClick={() => setCurrentSlide(i)}
                 >
-                  <img
-                    src={slide.imageUrl}
+                  <MediaPreview
+                    src={slide.imageUrl || '/zirkel/zirkel-logo.png'}
                     alt={`Pared ${i + 1}`}
                     className="w-full h-full object-cover"
                   />
@@ -1285,45 +1373,79 @@ export default function Presentation3D() {
               {/* Floor */}
               <div
                 className={`relative w-14 h-10 rounded-lg overflow-hidden cursor-pointer transition-all ${
-                  4 === currentSlideIndex 
+                  boxes[currentBoxIndex].slides.length === currentSlideIndex 
                     ? 'ring-2 scale-105 ring-[var(--theme-accent)]' 
                     : 'opacity-50 hover:opacity-80'
                 }`}
                 style={{ '--theme-accent': currentTheme.accent } as React.CSSProperties}
-                onClick={() => setCurrentSlide(4)}
+                onClick={() => setCurrentSlide(boxes[currentBoxIndex].slides.length)}
               >
-                <img
-                  src={boxes[currentBoxIndex].floorImageUrl}
+                <MediaPreview
+                  src={boxes[currentBoxIndex].floorImageUrl || '/zirkel/zirkel-logo.png'}
                   alt="Piso"
                   className="w-full h-full object-cover"
                 />
                 <div className={`absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 ${isDarkMode ? 'bg-black/60 text-white' : 'bg-white/80 text-gray-700'}`}>
-                  5
+                  {boxes[currentBoxIndex].slides.length + 1}
                 </div>
               </div>
               {/* Ceiling */}
               <div
                 className={`relative w-14 h-10 rounded-lg overflow-hidden cursor-pointer transition-all ${
-                  5 === currentSlideIndex 
+                  (boxes[currentBoxIndex].slides.length + 1) === currentSlideIndex 
                     ? 'ring-2 scale-105 ring-[var(--theme-accent)]' 
                     : 'opacity-50 hover:opacity-80'
                 }`}
                 style={{ '--theme-accent': currentTheme.accent } as React.CSSProperties}
-                onClick={() => setCurrentSlide(5)}
+                onClick={() => setCurrentSlide(boxes[currentBoxIndex].slides.length + 1)}
               >
-                <img
-                  src={boxes[currentBoxIndex].ceilingImageUrl}
+                <MediaPreview
+                  src={boxes[currentBoxIndex].ceilingImageUrl || '/zirkel/zirkel-logo.png'}
                   alt="Techo"
                   className="w-full h-full object-cover"
                 />
                 <div className={`absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 ${isDarkMode ? 'bg-black/60 text-white' : 'bg-white/80 text-gray-700'}`}>
-                  6
+                  {boxes[currentBoxIndex].slides.length + 2}
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Add / Remove slide buttons - visible inside box when UI is on */}
+      {isInsideBox && boxes[currentBoxIndex] && showAllUI && (
+        <div className="absolute top-4 right-24 z-20 flex gap-2 pointer-events-auto">
+          <button
+            onClick={() => addSlide(currentBoxIndex)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg bg-green-500/20 text-green-400 border border-green-500/50 hover:bg-green-500/40"
+            title="Agregar imagen al final"
+          >
+            ➕ Agregar imagen
+          </button>
+          <button
+            onClick={() => {
+              const numWalls = boxes[currentBoxIndex].slides.length;
+              if (numWalls > 1) {
+                removeSlide(currentBoxIndex);
+                if (currentSlideIndex >= numWalls - 1) setCurrentSlide(numWalls - 2);
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/40"
+            title="Borrar última imagen"
+          >
+            ➖ Borrar imagen
+          </button>
+        </div>
+      )}
+
+      {/* Version footer */}
+      {showAllUI && (
+        <div className={`absolute bottom-2 right-4 z-50 pointer-events-none select-none text-xs opacity-60 ${currentTheme.textMuted}`}>
+          Zirkel Presentation ® {new Date().getFullYear()} — V. 1.1
+        </div>
+      )}
+
     </div>
   );
 }
