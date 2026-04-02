@@ -56,6 +56,12 @@ export default function Presentation3D() {
   const [showAllUI, setShowAllUI] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true); // Theme toggle
 
+  // Modals state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveFilename, setSaveFilename] = useState('');
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [availableBlobs, setAvailableBlobs] = useState<any[]>([]);
+  const [isLoadingBlobs, setIsLoadingBlobs] = useState(false);
 
   const {
     boxes,
@@ -74,7 +80,9 @@ export default function Presentation3D() {
     loadPresentation,
     getExportData,
     addSlide,
-    removeSlide
+    removeSlide,
+    version,
+    incrementVersion
   } = usePresentationStore();
 
   // Theme colors - memoized to prevent unnecessary re-renders
@@ -953,6 +961,72 @@ export default function Presentation3D() {
     }
   };
 
+  // Get current linkUrl
+  const getCurrentLinkUrl = () => {
+    if (!boxes[currentBoxIndex]) return '';
+    const numSlides = boxes[currentBoxIndex].slides.length;
+    if (currentSlideIndex < numSlides) {
+      return boxes[currentBoxIndex].slides[currentSlideIndex]?.linkUrl || '';
+    } else if (currentSlideIndex === numSlides) {
+      return boxes[currentBoxIndex].floorLinkUrl || '';
+    } else {
+      return boxes[currentBoxIndex].ceilingLinkUrl || '';
+    }
+  };
+
+  const handleSaveToServer = async () => {
+    if (!saveFilename.trim()) return;
+    try {
+      const data = getExportData();
+      const response = await fetch('/api/save-blob', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data, filename: saveFilename }),
+      });
+      if (response.ok) {
+        alert('Guardado exitosamente');
+        setShowSaveModal(false);
+        incrementVersion();
+      } else {
+        alert('Error al guardar');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error en conexión');
+    }
+  };
+
+  const handleLoadFromServer = async () => {
+    setIsLoadingBlobs(true);
+    setShowLoadModal(true);
+    try {
+      const resp = await fetch('/api/list-blobs');
+      const data = await resp.json();
+      if (data.success) {
+        setAvailableBlobs(data.blobs);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingBlobs(false);
+    }
+  };
+
+  const loadSpecificBlob = async (url: string) => {
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      loadPresentation(data);
+      setShowLoadModal(false);
+      incrementVersion();
+    } catch (e) {
+      console.error(e);
+      alert('Error al cargar la presentación.');
+    }
+  };
+
   return (
     <div className={`relative w-full h-screen overflow-hidden select-none ${currentTheme.bg}`}>
       <div ref={containerRef} className="absolute inset-0" />
@@ -1120,20 +1194,37 @@ export default function Presentation3D() {
 
       {/* Current subtitle display when inside box - always visible regardless of UI toggle */}
       {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-20 w-full max-w-2xl px-4">
-          <div className="text-center">
-            <h2 
-              className={`text-xl md:text-3xl font-light px-8 py-4 rounded-xl backdrop-blur-md ${isDarkMode ? 'text-white' : 'text-gray-800'}`}
-              style={{
-                textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,1)' : '0 1px 2px rgba(255,255,255,0.8)',
-                background: isDarkMode 
-                  ? 'linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.4))'
-                  : 'linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.85))',
-                border: `1px solid ${isDarkMode ? 'rgba(0,255,255,0.2)' : 'rgba(34,197,94,0.2)'}`
-              }}
-            >
-              {boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle}
-            </h2>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-20 w-full max-w-2xl px-4 flex justify-center">
+          <div className="text-center relative group">
+            {getCurrentLinkUrl() ? (
+              <a href={getCurrentLinkUrl()} target="_blank" rel="noopener noreferrer" className="inline-block transition-transform transform hover:scale-105" title="Ir al enlace">
+                <h2 
+                  className={`text-xl md:text-3xl font-light px-8 py-4 rounded-xl backdrop-blur-md cursor-pointer ${isDarkMode ? 'text-cyan-300 hover:text-white' : 'text-green-700 hover:text-green-900'} underline decoration-2 underline-offset-4`}
+                  style={{
+                    textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,1)' : '0 1px 2px rgba(255,255,255,0.8)',
+                    background: isDarkMode 
+                      ? 'linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.4))'
+                      : 'linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.85))',
+                    border: `1px solid ${isDarkMode ? 'rgba(0,255,255,0.4)' : 'rgba(34,197,94,0.4)'}`
+                  }}
+                >
+                  {getCurrentSubtitle()} 🔗
+                </h2>
+              </a>
+            ) : (
+              <h2 
+                className={`text-xl md:text-3xl font-light px-8 py-4 rounded-xl backdrop-blur-md ${isDarkMode ? 'text-white' : 'text-gray-800'}`}
+                style={{
+                  textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,1)' : '0 1px 2px rgba(255,255,255,0.8)',
+                  background: isDarkMode 
+                    ? 'linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.4))'
+                    : 'linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.85))',
+                  border: `1px solid ${isDarkMode ? 'rgba(0,255,255,0.2)' : 'rgba(34,197,94,0.2)'}`
+                }}
+              >
+                {getCurrentSubtitle()}
+              </h2>
+            )}
           </div>
         </div>
       )}
@@ -1187,10 +1278,16 @@ export default function Presentation3D() {
             onClick={handleExport}
             className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-blue-500 hover:to-indigo-500 transition shadow-lg shadow-blue-500/25"
           >
-            💾 Guardar
+            💾 Guardar Local
           </button>
-          <label className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-purple-500 hover:to-pink-500 transition shadow-lg shadow-purple-500/25 cursor-pointer">
-            📂 Cargar
+          <button
+            onClick={() => { setSaveFilename(''); setShowSaveModal(true); }}
+            className="bg-gradient-to-r from-sky-600 to-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-sky-500 hover:to-blue-400 transition shadow-lg shadow-sky-500/25"
+          >
+            ☁️ Guardar en Servidor
+          </button>
+          <label className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-purple-500 hover:to-pink-500 transition shadow-lg shadow-purple-500/25 cursor-pointer flex items-center">
+            📂 Cargar Local
             <input
               type="file"
               accept=".json"
@@ -1201,6 +1298,12 @@ export default function Presentation3D() {
               }}
             />
           </label>
+          <button
+            onClick={handleLoadFromServer}
+            className="bg-gradient-to-r from-fuchsia-600 to-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-fuchsia-500 hover:to-purple-400 transition shadow-lg shadow-fuchsia-500/25"
+          >
+            ☁️ Cargar de Servidor
+          </button>
         </div>
 
         <div className="flex justify-center gap-2 mt-3">
@@ -1318,25 +1421,46 @@ export default function Presentation3D() {
                 </label>
               </div>
               
-              {/* Subtitle */}
-              <div className="flex-1">
-                <label className={`${currentTheme.textMuted} text-xs block mb-1.5 uppercase tracking-wider`}>Subtítulo</label>
-                <input
-                  type="text"
-                  value={getCurrentSubtitle()}
-                  onChange={(e) => {
-                    const numSlides = boxes[currentBoxIndex].slides.length;
-                    if (currentSlideIndex < numSlides) {
-                      updateSlide(boxes[currentBoxIndex].id, currentSlideIndex, { subtitle: e.target.value });
-                    } else if (currentSlideIndex === numSlides) {
-                      updateFloor(boxes[currentBoxIndex].id, { subtitle: e.target.value });
-                    } else if (currentSlideIndex === numSlides + 1) {
-                      updateCeiling(boxes[currentBoxIndex].id, { subtitle: e.target.value });
-                    }
-                  }}
-                  className={`w-full ${isDarkMode ? 'bg-gray-800/80 text-white border-gray-600 focus:border-cyan-400' : 'bg-gray-50 text-gray-800 border-gray-200 focus:border-[#22C55E]'} px-4 py-2.5 rounded-xl text-sm border focus:ring-2 focus:outline-none transition`}
-                  placeholder="Editar subtítulo..."
-                />
+              {/* Subtitle y LinkUrl */}
+              <div className="flex-1 flex flex-col gap-2">
+                <div>
+                  <label className={`${currentTheme.textMuted} text-xs block mb-1.5 uppercase tracking-wider`}>Subtítulo</label>
+                  <input
+                    type="text"
+                    value={getCurrentSubtitle()}
+                    onChange={(e) => {
+                      const numSlides = boxes[currentBoxIndex].slides.length;
+                      if (currentSlideIndex < numSlides) {
+                        updateSlide(boxes[currentBoxIndex].id, currentSlideIndex, { subtitle: e.target.value });
+                      } else if (currentSlideIndex === numSlides) {
+                        updateFloor(boxes[currentBoxIndex].id, { subtitle: e.target.value });
+                      } else if (currentSlideIndex === numSlides + 1) {
+                        updateCeiling(boxes[currentBoxIndex].id, { subtitle: e.target.value });
+                      }
+                    }}
+                    className={`w-full ${isDarkMode ? 'bg-gray-800/80 text-white border-gray-600 focus:border-cyan-400' : 'bg-gray-50 text-gray-800 border-gray-200 focus:border-[#22C55E]'} px-4 py-2 rounded-lg text-sm border focus:ring-2 focus:outline-none transition`}
+                    placeholder="Editar subtítulo..."
+                  />
+                </div>
+                <div>
+                  <label className={`${currentTheme.textMuted} text-xs block mb-1.5 uppercase tracking-wider`}>URL del Enlace</label>
+                  <input
+                    type="text"
+                    value={getCurrentLinkUrl()}
+                    onChange={(e) => {
+                      const numSlides = boxes[currentBoxIndex].slides.length;
+                      if (currentSlideIndex < numSlides) {
+                        updateSlide(boxes[currentBoxIndex].id, currentSlideIndex, { linkUrl: e.target.value });
+                      } else if (currentSlideIndex === numSlides) {
+                        updateFloor(boxes[currentBoxIndex].id, { linkUrl: e.target.value });
+                      } else if (currentSlideIndex === numSlides + 1) {
+                        updateCeiling(boxes[currentBoxIndex].id, { linkUrl: e.target.value });
+                      }
+                    }}
+                    className={`w-full ${isDarkMode ? 'bg-gray-800/80 text-white border-gray-600 focus:border-cyan-400' : 'bg-gray-50 text-gray-800 border-gray-200 focus:border-[#22C55E]'} px-4 py-2 rounded-lg text-sm border focus:ring-2 focus:outline-none transition`}
+                    placeholder="https://ejemplo.com"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1441,8 +1565,57 @@ export default function Presentation3D() {
 
       {/* Version footer */}
       {showAllUI && (
-        <div className={`absolute bottom-2 right-4 z-50 pointer-events-none select-none text-xs opacity-60 ${currentTheme.textMuted}`}>
-          Zirkel Presentation ® {new Date().getFullYear()} — V. 1.1
+        <div className={`absolute bottom-2 right-4 z-50 pointer-events-none select-none text-xs font-semibold tracking-wide ${currentTheme.textMuted}`}>
+          Zirkel Presentation ® {new Date().getFullYear()} — V. {version || 1}
+        </div>
+      )}
+
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 pointer-events-auto">
+          <div className={`${currentTheme.panelBg} p-6 rounded-2xl shadow-2xl border ${currentTheme.border} min-w-[300px]`}>
+            <h3 className={`${currentTheme.text} font-bold text-lg mb-4`}>Guardar en Servidor</h3>
+            <input 
+              type="text" 
+              value={saveFilename} 
+              onChange={e => setSaveFilename(e.target.value)} 
+              placeholder="Nombre de archivo (ej. mi-presentacion)"
+              className={`w-full ${isDarkMode ? 'bg-gray-800/80 text-white border-gray-600' : 'bg-gray-50 text-gray-800 border-gray-200'} px-4 py-2 mb-4 rounded-xl text-sm border focus:ring-2 focus:ring-cyan-400 outline-none`}
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowSaveModal(false)} className={`px-4 py-2 rounded-xl text-sm ${currentTheme.text} hover:opacity-70 transition`}>Cancelar</button>
+              <button onClick={handleSaveToServer} className="bg-gradient-to-r from-sky-600 to-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Load Modal */}
+      {showLoadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 pointer-events-auto">
+          <div className={`${currentTheme.panelBg} p-6 rounded-2xl shadow-2xl border ${currentTheme.border} w-[400px] max-h-[80vh] flex flex-col`}>
+            <h3 className={`${currentTheme.text} font-bold text-lg mb-4`}>Cargar de Servidor</h3>
+            {isLoadingBlobs ? (
+              <p className={`${currentTheme.textMuted} text-center py-8`}>Cargando presentaciones...</p>
+            ) : availableBlobs.length === 0 ? (
+              <p className={`${currentTheme.textMuted} text-center py-8`}>No hay presentaciones guardadas.</p>
+            ) : (
+              <div className="flex-1 overflow-y-auto pr-2 space-y-2 mb-4">
+                {availableBlobs.map((blob, idx) => {
+                  const nameDisplay = blob.pathname.replace('presentations/', '').replace('.json', '');
+                  return (
+                    <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition cursor-pointer`} onClick={() => loadSpecificBlob(blob.url)}>
+                      <span className={`${currentTheme.text} font-medium text-sm truncate`}>{nameDisplay}</span>
+                      <span className="text-xs text-blue-400">Descargar</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex justify-end mt-2">
+              <button onClick={() => setShowLoadModal(false)} className={`px-4 py-2 rounded-xl text-sm ${currentTheme.text} hover:opacity-70 transition`}>Cerrar</button>
+            </div>
+          </div>
         </div>
       )}
 

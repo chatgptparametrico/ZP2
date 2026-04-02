@@ -4,6 +4,7 @@ export interface SlideData {
   id: string;
   imageUrl: string;
   subtitle: string;
+  linkUrl?: string;
 }
 
 export interface BoxData {
@@ -14,6 +15,8 @@ export interface BoxData {
   ceilingImageUrl: string;
   floorSubtitle: string;
   ceilingSubtitle: string;
+  floorLinkUrl?: string;
+  ceilingLinkUrl?: string;
 }
 
 export interface PresentationState {
@@ -22,13 +25,17 @@ export interface PresentationState {
   isInsideBox: boolean;
   mouseEnabled: boolean;
   currentSlideIndex: number; // 0-3 for walls, 4=floor, 5=ceiling
+  version: number;
   
   // Actions
+  incrementVersion: () => void;
   addBox: () => void;
   removeBox: (id: string) => void;
+  addSlide: (boxIndex: number) => void;
+  removeSlide: (boxIndex: number) => void;
   updateSlide: (boxId: string, slideIndex: number, data: Partial<SlideData>) => void;
-  updateFloor: (boxId: string, imageUrl: string) => void;
-  updateCeiling: (boxId: string, imageUrl: string) => void;
+  updateFloor: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
+  updateCeiling: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
   updateBoxName: (boxId: string, name: string) => void;
   setCurrentBox: (index: number) => void;
   setInsideBox: (inside: boolean) => void;
@@ -40,7 +47,7 @@ export interface PresentationState {
 
 interface PresentationData {
   boxes: BoxData[];
-  version: string;
+  version: string | number;
 }
 
 // Animal images for default slides
@@ -82,44 +89,80 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   isInsideBox: false,
   mouseEnabled: true,
   currentSlideIndex: 0,
+  version: 1,
+
+  incrementVersion: () => set((state) => ({ version: state.version + 1 })),
 
   addBox: () => set((state) => ({
-    boxes: [...state.boxes, createDefaultBox(state.boxes.length)]
+    boxes: [...state.boxes, createDefaultBox(state.boxes.length)],
+    version: state.version + 1
   })),
 
   removeBox: (id: string) => set((state) => ({
-    boxes: state.boxes.filter(box => box.id !== id)
+    boxes: state.boxes.filter(box => box.id !== id),
+    version: state.version + 1
+  })),
+
+  addSlide: (boxIndex: number) => set((state) => ({
+    boxes: state.boxes.map((box, i) => {
+      if (i !== boxIndex) return box;
+      const newSlide: SlideData = { id: `slide-${Date.now()}`, imageUrl: '', subtitle: '' };
+      return { ...box, slides: [...box.slides, newSlide] };
+    }),
+    version: state.version + 1
+  })),
+
+  removeSlide: (boxIndex: number) => set((state) => ({
+    boxes: state.boxes.map((box, i) => {
+      if (i !== boxIndex || box.slides.length <= 1) return box;
+      return { ...box, slides: box.slides.slice(0, -1) };
+    }),
+    version: state.version + 1
   })),
 
   updateSlide: (boxId: string, slideIndex: number, data: Partial<SlideData>) => set((state) => ({
     boxes: state.boxes.map(box => {
       if (box.id === boxId) {
         const newSlides = [...box.slides];
-        if (slideIndex >= 0 && slideIndex < 4) {
+        if (slideIndex >= 0 && slideIndex < newSlides.length) {
           newSlides[slideIndex] = { ...newSlides[slideIndex], ...data };
         }
         return { ...box, slides: newSlides };
       }
       return box;
-    })
+    }),
+    version: state.version + 1
   })),
 
-  updateFloor: (boxId: string, imageUrl: string) => set((state) => ({
+  updateFloor: (boxId, data) => set((state) => ({
     boxes: state.boxes.map(box => 
-      box.id === boxId ? { ...box, floorImageUrl: imageUrl } : box
-    )
+      box.id === boxId ? { 
+        ...box, 
+        floorImageUrl: data.imageUrl !== undefined ? data.imageUrl : box.floorImageUrl,
+        floorSubtitle: data.subtitle !== undefined ? data.subtitle : box.floorSubtitle,
+        floorLinkUrl: data.linkUrl !== undefined ? data.linkUrl : box.floorLinkUrl
+      } : box
+    ),
+    version: state.version + 1
   })),
 
-  updateCeiling: (boxId: string, imageUrl: string) => set((state) => ({
+  updateCeiling: (boxId, data) => set((state) => ({
     boxes: state.boxes.map(box => 
-      box.id === boxId ? { ...box, ceilingImageUrl: imageUrl } : box
-    )
+      box.id === boxId ? { 
+        ...box, 
+        ceilingImageUrl: data.imageUrl !== undefined ? data.imageUrl : box.ceilingImageUrl,
+        ceilingSubtitle: data.subtitle !== undefined ? data.subtitle : box.ceilingSubtitle,
+        ceilingLinkUrl: data.linkUrl !== undefined ? data.linkUrl : box.ceilingLinkUrl
+      } : box
+    ),
+    version: state.version + 1
   })),
 
   updateBoxName: (boxId: string, name: string) => set((state) => ({
     boxes: state.boxes.map(box => 
       box.id === boxId ? { ...box, name } : box
-    )
+    ),
+    version: state.version + 1
   })),
 
   setCurrentBox: (index: number) => set({ currentBoxIndex: index }),
@@ -130,12 +173,13 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   
   setCurrentSlide: (index: number) => set({ currentSlideIndex: index }),
 
-  loadPresentation: (data: PresentationData) => set({
-    boxes: data.boxes
-  }),
+  loadPresentation: (data: PresentationData) => set((state) => ({
+    boxes: data.boxes,
+    version: typeof data.version === 'number' ? data.version : state.version + 1
+  })),
 
   getExportData: () => ({
     boxes: get().boxes,
-    version: '1.0'
+    version: get().version
   })
 }));
