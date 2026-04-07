@@ -1238,14 +1238,14 @@ export default function Presentation3D() {
             className="text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition shadow-lg"
             style={{ background: `linear-gradient(to right, ${currentTheme.accent}, ${isDarkMode ? '#16A34A' : '#16A34A'})` }}
           >
-            ➕ Nueva Caja
+            ➕ Nueva Sala
           </button>
 
           <button
             onClick={() => enterBox(currentBoxIndex)}
             className="bg-gradient-to-r from-green-600 to-teal-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-green-500 hover:to-teal-500 transition shadow-lg shadow-green-500/25"
           >
-            🚀 Entrar a Caja {currentBoxIndex + 1}
+            🚀 Entrar a Sala {currentBoxIndex + 1}
           </button>
 
           <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl p-1 border ${currentTheme.border}`}>
