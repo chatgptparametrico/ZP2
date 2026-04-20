@@ -51,6 +51,7 @@ export default function Presentation3D() {
   const targetCameraPitchRef = useRef(0);
   const fovRef = useRef(75);
   const targetFovRef = useRef(75);
+  const batchInputRef = useRef<HTMLInputElement>(null);
   
   const [showControls, setShowControls] = useState(true);
   const [showAllUI, setShowAllUI] = useState(true);
@@ -81,6 +82,7 @@ export default function Presentation3D() {
     getExportData,
     addSlide,
     removeSlide,
+    setSlides,
     version,
     incrementVersion
   } = usePresentationStore();
@@ -477,6 +479,37 @@ export default function Presentation3D() {
     focusOnBox(currentBoxIndex);
   }, [currentBoxIndex, setInsideBox, setCurrentSlide, focusOnBox]);
 
+  // Load latest presentation from server on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLatest = async () => {
+      try {
+        const resp = await fetch('/api/list-blobs');
+        const data = await resp.json();
+        if (data.success && data.blobs && data.blobs.length > 0) {
+          // Sort to ensure the most recently uploaded is first
+          const sortedBlobs = data.blobs.sort((a: any, b: any) => {
+            return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+          });
+          const latestBlob = sortedBlobs[0];
+          
+          const blobResp = await fetch(latestBlob.url);
+          const presentationData = await blobResp.json();
+          if (isMounted) {
+            loadPresentation(presentationData);
+            incrementVersion();
+          }
+        }
+      } catch (err) {
+        console.error('Error loading latest presentation on startup:', err);
+      }
+    };
+    fetchLatest();
+    return () => {
+      isMounted = false;
+    };
+  }, [loadPresentation, incrementVersion]);
+
   // Initialize scene (only once)
   useEffect(() => {
     if (!containerRef.current) return;
@@ -811,7 +844,8 @@ export default function Presentation3D() {
       switch (e.key) {
         case 'ArrowLeft':
           if (isInsideBox) {
-            const newSlideIndex = (currentSlideIndex - 1 + 6) % 6;
+            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
+            const newSlideIndex = (currentSlideIndex - 1 + total) % total;
             setCurrentSlide(newSlideIndex);
           } else {
             const newBoxIndex = (currentBoxIndex - 1 + boxes.length) % boxes.length;
@@ -821,7 +855,8 @@ export default function Presentation3D() {
           break;
         case 'ArrowRight':
           if (isInsideBox) {
-            const newSlideIndex = (currentSlideIndex + 1) % 6;
+            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
+            const newSlideIndex = (currentSlideIndex + 1) % total;
             setCurrentSlide(newSlideIndex);
           } else {
             const newBoxIndex = (currentBoxIndex + 1) % boxes.length;
@@ -892,6 +927,37 @@ export default function Presentation3D() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isInsideBox, currentBoxIndex, currentSlideIndex, boxes.length, setCurrentBox, setCurrentSlide, focusOnBox, enterBox, exitBox]);
+
+  const handleBatchUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    const newSlides: any[] = [];
+    let loadedCount = 0;
+    
+    Array.from(files).forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        newSlides[index] = {
+          id: `slide-${Date.now()}-${index}`,
+          imageUrl: event.target?.result as string,
+          subtitle: file.name
+        };
+        loadedCount++;
+        
+        if (loadedCount === files.length) {
+          setSlides(currentBoxIndex, newSlides);
+          setCurrentSlide(0);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Reset input
+    if (batchInputRef.current) {
+      batchInputRef.current.value = '';
+    }
+  };
 
   const handleImageUpload = (boxId: string, slideIndex: number, file: File) => {
     const reader = new FileReader();
@@ -1129,6 +1195,20 @@ export default function Presentation3D() {
       {/* Inside box - Right side buttons column */}
       {isInsideBox && boxes[currentBoxIndex] && showAllUI && (
         <div className="absolute top-4 right-4 z-40 flex flex-col gap-2 pointer-events-auto">
+          <input 
+            type="file" 
+            ref={batchInputRef} 
+            className="hidden" 
+            multiple 
+            accept="image/*,video/mp4" 
+            onChange={handleBatchUpload} 
+          />
+          <button
+            onClick={() => batchInputRef.current?.click()}
+            className={`${currentTheme.panelBg} backdrop-blur-md ${currentTheme.text} px-4 py-2 rounded-xl text-sm hover:opacity-80 transition border ${currentTheme.border} shadow-lg font-medium`}
+          >
+            📁 Subir Lote
+          </button>
           <button
             onClick={exitBox}
             className={`px-4 py-2 flex items-center gap-2 ${currentTheme.panelBg} hover:opacity-80 ${currentTheme.text} transition-all rounded-xl backdrop-blur-md border ${currentTheme.border} shadow-lg font-medium text-sm`}

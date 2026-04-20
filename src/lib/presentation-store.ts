@@ -37,6 +37,7 @@ export interface PresentationState {
   updateFloor: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
   updateCeiling: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
   updateBoxName: (boxId: string, name: string) => void;
+  setSlides: (boxIndex: number, slides: SlideData[]) => void;
   setCurrentBox: (index: number) => void;
   setInsideBox: (inside: boolean) => void;
   setMouseEnabled: (enabled: boolean) => void;
@@ -50,17 +51,17 @@ interface PresentationData {
   version: string | number;
 }
 
-// Animal images for default slides
-const animalImages: string[] = [
-  'https://images.pexels.com/photos/45201/kitty-cat-kitten-pet-45201.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1805164/pexels-photo-1805164.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1687427/pexels-photo-1687427.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1918290/pexels-photo-1918290.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1390361/pexels-photo-1390361.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1108099/pexels-photo-1108099.jpeg?auto=compress&cs=tinysrgb&w=800',
+// Default images to show before loading
+const defaultImages: string[] = [
+  '/zirkel/zirkel-logo.png',
+  '/zirkel/zirkel-logo.png',
+  '/zirkel/zirkel-logo.png',
+  '/zirkel/zirkel-logo.png',
+  '/zirkel/zirkel-logo.png',
+  '/zirkel/zirkel-logo.png',
 ];
 
-const defaultSlides: string[] = animalImages;
+const defaultSlides: string[] = defaultImages;
 
 const createDefaultBox = (index: number): BoxData => ({
   id: `box-${Date.now()}-${index}`,
@@ -161,6 +162,13 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   updateBoxName: (boxId: string, name: string) => set((state) => ({
     boxes: state.boxes.map(box => 
       box.id === boxId ? { ...box, name } : box
+    ),
+    version: state.version + 1
+  })),
+
+  setSlides: (boxIndex: number, slides: SlideData[]) => set((state) => ({
+    boxes: state.boxes.map((box, i) => 
+      i === boxIndex ? { ...box, slides } : box
     ),
     version: state.version + 1
   })),
