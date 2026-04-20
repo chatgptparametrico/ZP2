@@ -33,6 +33,7 @@ export interface PresentationState {
   removeBox: (id: string) => void;
   addSlide: (boxIndex: number) => void;
   removeSlide: (boxIndex: number) => void;
+  removeSlideAt: (boxIndex: number, slideIndex: number) => void;
   updateSlide: (boxId: string, slideIndex: number, data: Partial<SlideData>) => void;
   updateFloor: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
   updateCeiling: (boxId: string, data: Partial<{ imageUrl: string; subtitle: string; linkUrl?: string }>) => void;
@@ -117,6 +118,15 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
     boxes: state.boxes.map((box, i) => {
       if (i !== boxIndex || box.slides.length <= 1) return box;
       return { ...box, slides: box.slides.slice(0, -1) };
+    }),
+    version: state.version + 1
+  })),
+
+  removeSlideAt: (boxIndex: number, slideIndex: number) => set((state) => ({
+    boxes: state.boxes.map((box, i) => {
+      if (i !== boxIndex || box.slides.length <= 1) return box;
+      const newSlides = box.slides.filter((_, idx) => idx !== slideIndex);
+      return { ...box, slides: newSlides };
     }),
     version: state.version + 1
   })),

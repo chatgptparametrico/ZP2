@@ -89,6 +89,7 @@ export default function Presentation3D() {
     getExportData,
     addSlide,
     removeSlide,
+    removeSlideAt,
     setSlides,
     version,
     incrementVersion
@@ -1576,13 +1577,14 @@ export default function Presentation3D() {
               <button
                 onClick={() => {
                   const n = boxes[currentBoxIndex].slides.length;
-                  if (n > 1) {
-                    removeSlide(currentBoxIndex);
+                  if (n > 1 && currentSlideIndex < n) {
+                    removeSlideAt(currentBoxIndex, currentSlideIndex);
+                    // Move cursor back if we deleted the last visible slide
                     if (currentSlideIndex >= n - 1) setCurrentSlide(n - 2);
                   }
                 }}
                 className="w-10 h-10 rounded-xl font-bold transition text-sm bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/40"
-                title="Borrar última imagen"
+                title="Borrar imagen seleccionada"
               >➖</button>
               <button
                 onClick={() => {
@@ -1766,31 +1768,6 @@ export default function Presentation3D() {
         </div>
       )}
 
-      {/* Add / Remove slide buttons - visible inside box when UI is on */}
-      {isInsideBox && boxes[currentBoxIndex] && showAllUI && (
-        <div className="absolute top-4 right-24 z-20 flex gap-2 pointer-events-auto">
-          <button
-            onClick={() => addSlide(currentBoxIndex)}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg bg-green-500/20 text-green-400 border border-green-500/50 hover:bg-green-500/40"
-            title="Agregar imagen al final"
-          >
-            ➕ Agregar imagen
-          </button>
-          <button
-            onClick={() => {
-              const numWalls = boxes[currentBoxIndex].slides.length;
-              if (numWalls > 1) {
-                removeSlide(currentBoxIndex);
-                if (currentSlideIndex >= numWalls - 1) setCurrentSlide(numWalls - 2);
-              }
-            }}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/40"
-            title="Borrar última imagen"
-          >
-            ➖ Borrar imagen
-          </button>
-        </div>
-      )}
 
       {/* Version footer */}
       {showAllUI && (
