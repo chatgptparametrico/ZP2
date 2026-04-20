@@ -3,12 +3,19 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-const supabase = createClient(supabaseUrl, supabaseKey);
 const BUCKET_NAME = 'zirkelp-storage';
 
 export async function GET() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('Missing Supabase credentials');
+    return NextResponse.json({ error: 'Supabase credentials not configured on server' }, { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   try {
     const { data, error } = await supabase.storage.from(BUCKET_NAME).list('presentations', {
       sortBy: { column: 'updated_at', order: 'desc' }
@@ -27,12 +34,11 @@ export async function GET() {
       };
     });
 
-    // Sort by uploadedAt descending
     blobs.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
 
     return NextResponse.json({ success: true, files: blobs });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error loading blobs:', error);
-    return NextResponse.json({ error: 'Failed to list presentations' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Failed to list presentations' }, { status: 500 });
   }
 }

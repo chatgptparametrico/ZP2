@@ -931,33 +931,34 @@ export default function Presentation3D() {
   const handleBatchUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
-    const newSlides: any[] = [];
-    let loadedCount = 0;
-    
-    Array.from(files).forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        newSlides[index] = {
-          id: `slide-${Date.now()}-${index}`,
-          imageUrl: event.target?.result as string,
-          subtitle: file.name
+
+    const fileArray = Array.from(files);
+    const promises = fileArray.map((file, index) =>
+      new Promise<any>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          resolve({
+            id: `slide-${Date.now()}-${index}`,
+            imageUrl: event.target?.result as string,
+            subtitle: file.name.replace(/\.[^/.]+$/, '') // Remove extension from subtitle
+          });
         };
-        loadedCount++;
-        
-        if (loadedCount === files.length) {
-          setSlides(currentBoxIndex, newSlides);
-          setCurrentSlide(0);
-        }
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      })
+    );
+
+    Promise.all(promises).then((newSlides) => {
+      setSlides(currentBoxIndex, newSlides);
+      setCurrentSlide(0);
+      alert(`✅ ${newSlides.length} archivo(s) cargados en la sala`);
     });
-    
-    // Reset input
+
+    // Reset input so same files can be re-selected
     if (batchInputRef.current) {
       batchInputRef.current.value = '';
     }
   };
+
 
   const handleImageUpload = (boxId: string, slideIndex: number, file: File) => {
     const reader = new FileReader();
