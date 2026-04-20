@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   output: undefined,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
+  },
 };
 
 export default nextConfig;
