@@ -71,6 +71,7 @@ export default function Presentation3D() {
     mouseEnabled,
     currentSlideIndex,
     addBox,
+    removeBox,
     updateSlide,
     updateFloor,
     updateCeiling,
@@ -1309,6 +1310,25 @@ export default function Presentation3D() {
             style={{ background: `linear-gradient(to right, ${currentTheme.accent}, ${isDarkMode ? '#16A34A' : '#16A34A'})` }}
           >
             ➕ Nueva Sala
+          </button>
+
+          <button
+            onClick={() => {
+              if (boxes.length <= 1) {
+                alert('No puedes borrar la única sala existente.');
+                return;
+              }
+              if (confirm(`¿Borrar la Sala ${currentBoxIndex + 1}?`)) {
+                const boxId = boxes[currentBoxIndex].id;
+                const newIndex = currentBoxIndex > 0 ? currentBoxIndex - 1 : 0;
+                setCurrentBox(newIndex);
+                removeBox(boxId);
+                setTimeout(() => focusOnBox(newIndex), 100);
+              }
+            }}
+            className="bg-gradient-to-r from-red-700 to-rose-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-red-600 hover:to-rose-500 transition shadow-lg shadow-red-500/25"
+          >
+            🗑️ Borrar Sala
           </button>
 
           <button
