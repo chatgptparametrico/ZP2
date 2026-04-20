@@ -1300,7 +1300,9 @@ export default function Presentation3D() {
       {/* Bottom controls - Bird view */}
       {showAllUI && !isInsideBox && (
       <div className="absolute bottom-0 left-0 right-0 p-4 z-10 pointer-events-none">
-        <div className="flex justify-center gap-3 flex-wrap pointer-events-auto">
+
+        {/* Row 1: Nav + actions */}
+        <div className="flex justify-center gap-3 flex-wrap pointer-events-auto mb-2">
           <button
             onClick={addBox}
             className="text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition shadow-lg"
@@ -1341,37 +1343,49 @@ export default function Presentation3D() {
               ➡️
             </button>
           </div>
+        </div>
 
-          <button
-            onClick={handleExport}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-blue-500 hover:to-indigo-500 transition shadow-lg shadow-blue-500/25"
-          >
-            💾 Guardar Local
-          </button>
-          <button
-            onClick={() => { setSaveFilename(''); setShowSaveModal(true); }}
-            className="bg-gradient-to-r from-sky-600 to-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-sky-500 hover:to-blue-400 transition shadow-lg shadow-sky-500/25"
-          >
-            ☁️ Guardar en Servidor
-          </button>
-          <label className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-purple-500 hover:to-pink-500 transition shadow-lg shadow-purple-500/25 cursor-pointer flex items-center">
-            📂 Cargar Local
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImport(file);
-              }}
-            />
-          </label>
-          <button
-            onClick={handleLoadFromServer}
-            className="bg-gradient-to-r from-fuchsia-600 to-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-fuchsia-500 hover:to-purple-400 transition shadow-lg shadow-fuchsia-500/25"
-          >
-            ☁️ Cargar de Servidor
-          </button>
+        {/* Row 2: Local | Server (separated) */}
+        <div className="flex justify-center gap-2 flex-wrap pointer-events-auto">
+          {/* LOCAL group */}
+          <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
+            <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Local</span>
+            <button
+              onClick={handleExport}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-blue-500 hover:to-indigo-500 transition shadow"
+            >
+              💾 Guardar
+            </button>
+            <label className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-purple-500 hover:to-pink-500 transition shadow cursor-pointer flex items-center">
+              📂 Cargar
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImport(file);
+                }}
+              />
+            </label>
+          </div>
+
+          {/* SERVER group */}
+          <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
+            <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Servidor</span>
+            <button
+              onClick={() => { setSaveFilename(''); setShowSaveModal(true); }}
+              className="bg-gradient-to-r from-sky-600 to-blue-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-sky-500 hover:to-blue-400 transition shadow"
+            >
+              ☁️ Guardar
+            </button>
+            <button
+              onClick={handleLoadFromServer}
+              className="bg-gradient-to-r from-fuchsia-600 to-purple-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-fuchsia-500 hover:to-purple-400 transition shadow"
+            >
+              ☁️ Cargar
+            </button>
+          </div>
         </div>
 
         <div className="flex justify-center gap-2 mt-3">
@@ -1439,7 +1453,7 @@ export default function Presentation3D() {
                   {label}
                 </button>
               ))}
-              {/* Separator + add/remove buttons */}
+              {/* Separator + add/remove + clear buttons */}
               <div className="w-px h-8 bg-gray-500/30 mx-1" />
               <button
                 onClick={() => addSlide(currentBoxIndex)}
@@ -1457,6 +1471,23 @@ export default function Presentation3D() {
                 className="w-10 h-10 rounded-xl font-bold transition text-sm bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/40"
                 title="Borrar última imagen"
               >➖</button>
+              <button
+                onClick={() => {
+                  if (confirm('¿Borrar todas las imágenes de esta sala?')) {
+                    const blank = Array.from({ length: 4 }, (_, i) => ({
+                      id: `slide-${Date.now()}-${i}`,
+                      imageUrl: '',
+                      subtitle: ''
+                    }));
+                    setSlides(currentBoxIndex, blank);
+                    updateFloor(boxes[currentBoxIndex].id, { imageUrl: '', subtitle: '' });
+                    updateCeiling(boxes[currentBoxIndex].id, { imageUrl: '', subtitle: '' });
+                    setCurrentSlide(0);
+                  }
+                }}
+                className="w-10 h-10 rounded-xl font-bold transition text-sm bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/40"
+                title="Borrar todas las imágenes de la sala"
+              >🗑️</button>
             </div>
 
             {/* Edit controls - Horizontal layout */}
