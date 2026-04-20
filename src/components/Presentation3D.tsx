@@ -66,6 +66,9 @@ export default function Presentation3D() {
   // Upload progress
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0, label: '' });
+  // Download progress
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState({ current: 0, total: 0, label: '' });
 
   const {
     boxes,
@@ -1142,15 +1145,47 @@ export default function Presentation3D() {
   };
 
   const loadSpecificBlob = async (url: string) => {
+    setShowLoadModal(false);
+    setIsLoading(true);
+    setLoadProgress({ current: 0, total: 0, label: 'Descargando presentación...' });
     try {
+      // Step 1: fetch the JSON
       const resp = await fetch(url);
       const data = await resp.json();
+
+      // Step 2: count all image URLs to pre-fetch
+      const imageUrls: string[] = [];
+      for (const box of data.boxes || []) {
+        for (const slide of box.slides || []) {
+          if (slide.imageUrl && !slide.imageUrl.startsWith('data:')) imageUrls.push(slide.imageUrl);
+        }
+        if (box.floorImageUrl && !box.floorImageUrl.startsWith('data:')) imageUrls.push(box.floorImageUrl);
+        if (box.ceilingImageUrl && !box.ceilingImageUrl.startsWith('data:')) imageUrls.push(box.ceilingImageUrl);
+      }
+
+      const total = imageUrls.length;
+      setLoadProgress({ current: 0, total, label: total > 0 ? `Cargando imágenes (0 de ${total})...` : 'Aplicando presentación...' });
+
+      // Step 3: pre-fetch each image (warms browser cache so Three.js loads instantly)
+      for (let i = 0; i < imageUrls.length; i++) {
+        setLoadProgress({ current: i, total, label: `Cargando imagen ${i + 1} de ${total}...` });
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve();
+          img.onerror = () => resolve(); // don't block on error
+          img.src = imageUrls[i];
+        });
+      }
+
+      // Step 4: apply data to store
+      setLoadProgress({ current: total, total, label: '¡Presentación cargada!' });
       loadPresentation(data);
-      setShowLoadModal(false);
       incrementVersion();
+      setTimeout(() => setIsLoading(false), 1000);
     } catch (e) {
       console.error(e);
       alert('Error al cargar la presentación.');
+      setIsLoading(false);
     }
   };
 
@@ -1800,6 +1835,49 @@ export default function Presentation3D() {
                 <div
                   className="h-full rounded-full animate-pulse"
                   style={{ width: '100%', background: `linear-gradient(to right, ${currentTheme.accent}, transparent)` }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Download Progress Overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[60] pointer-events-auto">
+          <div className={`${currentTheme.panelBg} p-8 rounded-2xl shadow-2xl border ${currentTheme.border} w-[360px] flex flex-col items-center gap-5`}>
+            {/* Icon */}
+            <div className="text-4xl animate-pulse">
+              {loadProgress.label.includes('¡') ? '✅' : '⬇️'}
+            </div>
+            {/* Label */}
+            <p className={`${currentTheme.text} font-semibold text-center text-sm`}>
+              {loadProgress.label}
+            </p>
+            {/* Progress bar with images */}
+            {loadProgress.total > 0 && (
+              <div className="w-full">
+                <div className={`w-full h-3 rounded-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} overflow-hidden`}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.round((loadProgress.current / loadProgress.total) * 100)}%`,
+                      background: `linear-gradient(to right, ${isDarkMode ? '#06b6d4' : '#22c55e'}, ${isDarkMode ? '#a855f7' : '#16a34a'})`
+                    }}
+                  />
+                </div>
+                <p className={`text-xs ${currentTheme.textMuted} text-center mt-1`}>
+                  {loadProgress.current} / {loadProgress.total} imágenes
+                  {` (${Math.round((loadProgress.current / loadProgress.total) * 100)}%)`}
+                </p>
+              </div>
+            )}
+            {/* Indeterminate bar for initial JSON fetch */}
+            {loadProgress.total === 0 && (
+              <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: isDarkMode ? '#1f2937' : '#e5e7eb' }}>
+                <div
+                  className="h-full rounded-full animate-pulse"
+                  style={{ width: '100%', background: `linear-gradient(to right, ${isDarkMode ? '#06b6d4' : '#22c55e'}, transparent)` }}
                 />
               </div>
             )}
