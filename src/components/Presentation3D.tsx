@@ -63,6 +63,9 @@ export default function Presentation3D() {
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [availableBlobs, setAvailableBlobs] = useState<any[]>([]);
   const [isLoadingBlobs, setIsLoadingBlobs] = useState(false);
+  // Upload progress
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0, label: '' });
 
   const {
     boxes,
@@ -1042,28 +1045,83 @@ export default function Presentation3D() {
     }
   };
 
+  // Helper: upload a single base64 dataUrl as a file to the server
+  const uploadMediaFile = async (dataUrl: string, fileId: string): Promise<string> => {
+    // Convert base64 data URL to Blob
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append('file', blob, fileId);
+    formData.append('fileId', fileId);
+    const response = await fetch('/api/upload-media', { method: 'POST', body: formData });
+    if (!response.ok) throw new Error(`Failed to upload ${fileId}`);
+    const json = await response.json();
+    return json.url;
+  };
+
   const handleSaveToServer = async () => {
     const finalFilename = saveFilename.trim() || `presentacion-${new Date().toISOString().slice(0,10)}-${Date.now()}`;
+    setShowSaveModal(false);
+    setIsSaving(true);
+
     try {
-      const data = getExportData();
+      // Deep clone data to avoid mutating store
+      const exportData = JSON.parse(JSON.stringify(getExportData()));
+
+      // Count total images that need uploading
+      let totalImages = 0;
+      for (const box of exportData.boxes) {
+        for (const slide of box.slides || []) {
+          if (slide.imageUrl?.startsWith('data:')) totalImages++;
+        }
+        if (box.floorImageUrl?.startsWith('data:')) totalImages++;
+        if (box.ceilingImageUrl?.startsWith('data:')) totalImages++;
+      }
+
+      let uploadedCount = 0;
+      setSaveProgress({ current: 0, total: totalImages, label: totalImages > 0 ? 'Subiendo imágenes...' : 'Guardando...' });
+
+      // Upload each image individually
+      for (const box of exportData.boxes) {
+        for (const slide of box.slides || []) {
+          if (slide.imageUrl?.startsWith('data:')) {
+            setSaveProgress({ current: uploadedCount, total: totalImages, label: `Subiendo imagen ${uploadedCount + 1} de ${totalImages}...` });
+            slide.imageUrl = await uploadMediaFile(slide.imageUrl, `slide-${slide.id}`);
+            uploadedCount++;
+          }
+        }
+        if (box.floorImageUrl?.startsWith('data:')) {
+          setSaveProgress({ current: uploadedCount, total: totalImages, label: `Subiendo imagen ${uploadedCount + 1} de ${totalImages}...` });
+          box.floorImageUrl = await uploadMediaFile(box.floorImageUrl, `floor-${box.id}`);
+          uploadedCount++;
+        }
+        if (box.ceilingImageUrl?.startsWith('data:')) {
+          setSaveProgress({ current: uploadedCount, total: totalImages, label: `Subiendo imagen ${uploadedCount + 1} de ${totalImages}...` });
+          box.ceilingImageUrl = await uploadMediaFile(box.ceilingImageUrl, `ceiling-${box.id}`);
+          uploadedCount++;
+        }
+      }
+
+      // Save the final JSON (now has only URLs, very small)
+      setSaveProgress({ current: totalImages, total: totalImages, label: 'Guardando presentación...' });
       const response = await fetch('/api/save-blob', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ data, filename: finalFilename }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: exportData, filename: finalFilename }),
       });
+
       if (response.ok) {
-        alert(`Guardado exitosamente como "${finalFilename}"`);
-        setShowSaveModal(false);
-        incrementVersion();
+        setSaveProgress({ current: totalImages, total: totalImages, label: '¡Guardado exitosamente!' });
+        setTimeout(() => { setIsSaving(false); incrementVersion(); }, 1200);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(`Error al guardar: ${err.error || response.statusText}`);
+        setIsSaving(false);
       }
     } catch (e) {
       console.error(e);
-      alert('Error en conexión con el servidor. Verifica las variables de entorno de Supabase en Vercel.');
+      alert('Error en conexión con el servidor.');
+      setIsSaving(false);
     }
   };
 
@@ -1703,6 +1761,49 @@ export default function Presentation3D() {
       {showAllUI && (
         <div className={`absolute bottom-2 right-4 z-50 pointer-events-none select-none text-xs font-semibold tracking-wide ${currentTheme.textMuted}`}>
           Zirkel Presentation ® {new Date().getFullYear()} — V. {version || 1}
+        </div>
+      )}
+
+      {/* Upload Progress Overlay */}
+      {isSaving && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[60] pointer-events-auto">
+          <div className={`${currentTheme.panelBg} p-8 rounded-2xl shadow-2xl border ${currentTheme.border} w-[360px] flex flex-col items-center gap-5`}>
+            {/* Icon */}
+            <div className="text-4xl animate-pulse">
+              {saveProgress.label.includes('¡') ? '✅' : '☁️'}
+            </div>
+            {/* Label */}
+            <p className={`${currentTheme.text} font-semibold text-center text-sm`}>
+              {saveProgress.label}
+            </p>
+            {/* Progress bar */}
+            {saveProgress.total > 0 && (
+              <div className="w-full">
+                <div className={`w-full h-3 rounded-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} overflow-hidden`}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.round((saveProgress.current / saveProgress.total) * 100)}%`,
+                      background: `linear-gradient(to right, ${currentTheme.accent}, ${isDarkMode ? '#a855f7' : '#16a34a'})`
+                    }}
+                  />
+                </div>
+                <p className={`text-xs ${currentTheme.textMuted} text-center mt-1`}>
+                  {saveProgress.current} / {saveProgress.total} imágenes
+                  {saveProgress.total > 0 && ` (${Math.round((saveProgress.current / saveProgress.total) * 100)}%)`}
+                </p>
+              </div>
+            )}
+            {/* Indeterminate bar for "Guardando JSON..." step */}
+            {saveProgress.total === 0 && (
+              <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: isDarkMode ? '#1f2937' : '#e5e7eb' }}>
+                <div
+                  className="h-full rounded-full animate-pulse"
+                  style={{ width: '100%', background: `linear-gradient(to right, ${currentTheme.accent}, transparent)` }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
