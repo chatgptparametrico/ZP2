@@ -1041,7 +1041,7 @@ export default function Presentation3D() {
   };
 
   const handleSaveToServer = async () => {
-    if (!saveFilename.trim()) return;
+    const finalFilename = saveFilename.trim() || `presentacion-${new Date().toISOString().slice(0,10)}-${Date.now()}`;
     try {
       const data = getExportData();
       const response = await fetch('/api/save-blob', {
@@ -1049,18 +1049,19 @@ export default function Presentation3D() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ data, filename: saveFilename }),
+        body: JSON.stringify({ data, filename: finalFilename }),
       });
       if (response.ok) {
-        alert('Guardado exitosamente');
+        alert(`Guardado exitosamente como "${finalFilename}"`);
         setShowSaveModal(false);
         incrementVersion();
       } else {
-        alert('Error al guardar');
+        const err = await response.json().catch(() => ({}));
+        alert(`Error al guardar: ${err.error || response.statusText}`);
       }
     } catch (e) {
       console.error(e);
-      alert('Error en conexión');
+      alert('Error en conexión con el servidor. Verifica las variables de entorno de Supabase en Vercel.');
     }
   };
 
@@ -1195,20 +1196,6 @@ export default function Presentation3D() {
       {/* Inside box - Right side buttons column */}
       {isInsideBox && boxes[currentBoxIndex] && showAllUI && (
         <div className="absolute top-4 right-4 z-40 flex flex-col gap-2 pointer-events-auto">
-          <input 
-            type="file" 
-            ref={batchInputRef} 
-            className="hidden" 
-            multiple 
-            accept="image/*,video/mp4" 
-            onChange={handleBatchUpload} 
-          />
-          <button
-            onClick={() => batchInputRef.current?.click()}
-            className={`${currentTheme.panelBg} backdrop-blur-md ${currentTheme.text} px-4 py-2 rounded-xl text-sm hover:opacity-80 transition border ${currentTheme.border} shadow-lg font-medium`}
-          >
-            📁 Subir Lote
-          </button>
           <button
             onClick={exitBox}
             className={`px-4 py-2 flex items-center gap-2 ${currentTheme.panelBg} hover:opacity-80 ${currentTheme.text} transition-all rounded-xl backdrop-blur-md border ${currentTheme.border} shadow-lg font-medium text-sm`}
@@ -1473,8 +1460,8 @@ export default function Presentation3D() {
 
             {/* Edit controls - Horizontal layout */}
             <div className="flex gap-3 items-end">
-              {/* Image preview */}
-              <div className="flex-shrink-0">
+              {/* Image upload + batch upload */}
+              <div className="flex-shrink-0 flex flex-col gap-2">
                 <label className={`${currentTheme.textMuted} text-xs block mb-1.5 uppercase tracking-wider`}>
                   {currentSlideIndex < boxes[currentBoxIndex].slides.length ? 'Pared' : (currentSlideIndex === boxes[currentBoxIndex].slides.length ? 'Piso' : 'Techo')} {currentSlideIndex + 1}
                 </label>
@@ -1499,6 +1486,23 @@ export default function Presentation3D() {
                     }}
                   />
                 </label>
+                {/* Batch upload button */}
+                <input
+                  type="file"
+                  ref={batchInputRef}
+                  className="hidden"
+                  multiple
+                  accept="image/*,video/mp4"
+                  onChange={handleBatchUpload}
+                />
+                <button
+                  onClick={() => batchInputRef.current?.click()}
+                  className={`w-32 py-1.5 rounded-xl text-xs font-semibold transition border ${currentTheme.border} ${currentTheme.text} hover:opacity-80`}
+                  style={{ backgroundColor: isDarkMode ? 'rgba(0,255,255,0.1)' : 'rgba(34,197,94,0.1)' }}
+                  title="Subir lote de imágenes/videos a esta sala"
+                >
+                  📁 Subir Lote
+                </button>
               </div>
               
               {/* Subtitle y LinkUrl */}
