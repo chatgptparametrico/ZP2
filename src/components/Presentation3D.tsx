@@ -1193,7 +1193,6 @@ export default function Presentation3D() {
   const handleDeleteBlob = async (e: React.MouseEvent, pathname: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm('¿Estás seguro de que quieres borrar esta presentación del servidor?')) return;
     
     try {
       const res = await fetch('/api/delete-blob', {
@@ -1204,8 +1203,9 @@ export default function Presentation3D() {
       const data = await res.json();
       if (data.success) {
         setAvailableBlobs(prev => prev.filter(b => b.pathname !== pathname));
-        alert('Presentación borrada exitosamente del servidor');
+        console.log('Presentación borrada exitosamente del servidor');
       } else {
+        console.error(`Error al borrar: ${data.error}`);
         alert(`Error al borrar: ${data.error}`);
       }
     } catch (err) {
@@ -1217,7 +1217,6 @@ export default function Presentation3D() {
   return (
     <div className={`relative w-full h-screen overflow-hidden select-none ${currentTheme.bg}`}>
       <div ref={containerRef} className="absolute inset-0" />
-
 
       {/* Zirkel Logo & Video - Bird view only */}
       {!isInsideBox && showAllUI && (
@@ -1917,10 +1916,10 @@ export default function Presentation3D() {
               <p className={`${currentTheme.textMuted} text-center py-8`}>No hay presentaciones guardadas.</p>
             ) : (
               <div className="flex-1 overflow-y-auto pr-2 space-y-2 mb-4">
-                {availableBlobs.map((blob, idx) => {
+                {availableBlobs.map((blob) => {
                   const nameDisplay = blob.pathname.replace('presentations/', '').replace('.json', '');
                   return (
-                    <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition`}>
+                    <div key={blob.pathname} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition`}>
                       <div className="flex-1 cursor-pointer truncate" onClick={() => loadSpecificBlob(blob.url)}>
                         <span className={`${currentTheme.text} font-medium text-sm`}>{nameDisplay}</span>
                       </div>
