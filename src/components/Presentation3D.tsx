@@ -487,32 +487,22 @@ export default function Presentation3D() {
     focusOnBox(currentBoxIndex);
   }, [currentBoxIndex, setInsideBox, setCurrentSlide, focusOnBox]);
 
-  // Load latest presentation from server on mount
+  // Load latest presentation from local storage on mount
   useEffect(() => {
     let isMounted = true;
-    const fetchLatest = async () => {
+    const loadLocal = () => {
       try {
-        const resp = await fetch('/api/list-blobs');
-        const data = await resp.json();
-        if (data.success && data.blobs && data.blobs.length > 0) {
-          // Sort to ensure the most recently uploaded is first
-          const sortedBlobs = data.blobs.sort((a: any, b: any) => {
-            return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
-          });
-          const latestBlob = sortedBlobs[0];
-          
-          const blobResp = await fetch(latestBlob.url);
-          const presentationData = await blobResp.json();
-          if (isMounted) {
-            loadPresentation(presentationData);
-            incrementVersion();
-          }
+        const localData = localStorage.getItem('zirkel_latest_presentation');
+        if (localData && isMounted) {
+          const presentationData = JSON.parse(localData);
+          loadPresentation(presentationData);
+          incrementVersion();
         }
       } catch (err) {
-        console.error('Error loading latest presentation on startup:', err);
+        console.error('Error loading latest presentation from local storage on startup:', err);
       }
     };
-    fetchLatest();
+    loadLocal();
     return () => {
       isMounted = false;
     };
@@ -986,6 +976,11 @@ export default function Presentation3D() {
 
   const handleExport = () => {
     const data = getExportData();
+    try {
+      localStorage.setItem('zirkel_latest_presentation', JSON.stringify(data));
+    } catch(e) {
+      console.warn("No se pudo guardar en localStorage", e);
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1116,6 +1111,11 @@ export default function Presentation3D() {
 
       if (response.ok) {
         setSaveProgress({ current: totalImages, total: totalImages, label: '¡Guardado exitosamente!' });
+        try {
+          localStorage.setItem('zirkel_latest_presentation', JSON.stringify(exportData));
+        } catch(e) {
+          console.warn("No se pudo guardar en localStorage", e);
+        }
         setTimeout(() => { setIsSaving(false); incrementVersion(); }, 1200);
       } else {
         const err = await response.json().catch(() => ({}));
@@ -1187,6 +1187,29 @@ export default function Presentation3D() {
       console.error(e);
       alert('Error al cargar la presentación.');
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteBlob = async (e: React.MouseEvent, pathname: string) => {
+    e.stopPropagation();
+    if (!confirm('¿Estás seguro de que quieres borrar esta presentación del servidor?')) return;
+    
+    try {
+      const res = await fetch('/api/delete-blob', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pathname })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAvailableBlobs(prev => prev.filter(b => b.pathname !== pathname));
+        alert('Presentación borrada exitosamente del servidor');
+      } else {
+        alert(`Error al borrar: ${data.error}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de conexión al borrar');
     }
   };
 
@@ -1898,7 +1921,16 @@ export default function Presentation3D() {
                   return (
                     <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition cursor-pointer`} onClick={() => loadSpecificBlob(blob.url)}>
                       <span className={`${currentTheme.text} font-medium text-sm truncate`}>{nameDisplay}</span>
-                      <span className="text-xs text-blue-400">Descargar</span>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs text-blue-400 hover:text-blue-300 transition">Descargar</span>
+                        <button 
+                          onClick={(e) => handleDeleteBlob(e, blob.pathname)}
+                          className="text-xs text-red-500 hover:text-red-400 p-1 rounded-md transition"
+                          title="Borrar del servidor"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
