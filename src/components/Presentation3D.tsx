@@ -1191,6 +1191,7 @@ export default function Presentation3D() {
   };
 
   const handleDeleteBlob = async (e: React.MouseEvent, pathname: string) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!confirm('¿Estás seguro de que quieres borrar esta presentación del servidor?')) return;
     
@@ -1924,6 +1925,7 @@ export default function Presentation3D() {
                       <div className="flex gap-2 items-center">
                         <span className="text-xs text-blue-400 hover:text-blue-300 transition">Descargar</span>
                         <button 
+                          type="button"
                           onClick={(e) => handleDeleteBlob(e, blob.pathname)}
                           className="text-xs text-red-500 hover:text-red-400 p-1 rounded-md transition"
                           title="Borrar del servidor"
