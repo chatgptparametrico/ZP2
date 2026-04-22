@@ -1920,10 +1920,18 @@ export default function Presentation3D() {
                 {availableBlobs.map((blob, idx) => {
                   const nameDisplay = blob.pathname.replace('presentations/', '').replace('.json', '');
                   return (
-                    <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition cursor-pointer`} onClick={() => loadSpecificBlob(blob.url)}>
-                      <span className={`${currentTheme.text} font-medium text-sm truncate`}>{nameDisplay}</span>
-                      <div className="flex gap-2 items-center">
-                        <span className="text-xs text-blue-400 hover:text-blue-300 transition">Descargar</span>
+                    <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${currentTheme.border} ${isDarkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'} transition`}>
+                      <div className="flex-1 cursor-pointer truncate" onClick={() => loadSpecificBlob(blob.url)}>
+                        <span className={`${currentTheme.text} font-medium text-sm`}>{nameDisplay}</span>
+                      </div>
+                      <div className="flex gap-3 items-center flex-shrink-0">
+                        <button 
+                          type="button"
+                          onClick={() => loadSpecificBlob(blob.url)}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition"
+                        >
+                          Descargar
+                        </button>
                         <button 
                           type="button"
                           onClick={(e) => handleDeleteBlob(e, blob.pathname)}
