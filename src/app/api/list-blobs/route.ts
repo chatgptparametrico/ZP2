@@ -34,7 +34,9 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ success: true, blobs });
+    const response = NextResponse.json({ success: true, blobs });
+    response.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
+    return response;
   } catch (error: any) {
     console.error('Error listing blobs:', error);
     return NextResponse.json({ error: error?.message || 'Failed to list presentations' }, { status: 500 });

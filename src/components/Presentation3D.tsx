@@ -1133,7 +1133,7 @@ export default function Presentation3D() {
     setIsLoadingBlobs(true);
     setShowLoadModal(true);
     try {
-      const resp = await fetch('/api/list-blobs');
+      const resp = await fetch(`/api/list-blobs?t=${Date.now()}`, { cache: 'no-store' });
       const data = await resp.json();
       if (data.success) {
         setAvailableBlobs(data.blobs);
