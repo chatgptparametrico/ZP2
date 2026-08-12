@@ -79,13 +79,55 @@ const createDefaultBox = (index: number): BoxData => ({
   ceilingSubtitle: 'Sistema de Cubierta',
 });
 
+// ── Contenido por defecto de la presentación ────────────────────────────────
+// Los archivos viven en public/presentacion, ya optimizados para proyector
+// (imágenes y videos a 1280x720). El orden es el de los números del original.
+// Todo va en las PAREDES: piso y techo quedan con el logo, sin contenido, para
+// que no haya material escondido mirando hacia arriba o hacia abajo.
+// Las salas tienen 4 paredes físicas: cuando hay más láminas que paredes, el
+// visor las va rotando a medida que se avanza con ↓, así que una sala admite
+// tantas láminas como haga falta.
+const MEDIA_PRESENTACION: string[] = [
+  '1.jpg', '2.mp4', '3.mp4', '4.mp4', '5.mp4', '6.mp4', '7.jpg', '8.mp4', '9.jpg',
+  '10.jpg', '11.mp4', '12.mp4', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg',
+  '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
+  '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg', '34.mp4', '35.mp4', '36.jpg',
+  '37.mp4', '38.mp4', '39.mp4', '40.jpg', '41.jpg', '42.jpg', '43.jpg',
+];
+
+const SALAS_INICIALES = 3;
+
+const crearSalaConMedia = (index: number, archivos: string[]): BoxData => ({
+  id: `box-${Date.now()}-${index}`,
+  name: `Presentación ${index + 1}`,
+  slides: archivos.map((archivo, i) => ({
+    id: `slide-${Date.now()}-${index}-${i}`,
+    imageUrl: `/presentacion/${archivo}`,
+    subtitle: '',
+  })),
+  floorImageUrl: '/zirkel/zirkel-logo.png',
+  ceilingImageUrl: '/zirkel/zirkel-logo.png',
+  floorSubtitle: '',
+  ceilingSubtitle: '',
+});
+
+// Reparte los archivos en partes lo más parejas posible (43 en 3 salas = 15/14/14).
+const crearSalasIniciales = (): BoxData[] => {
+  const total = MEDIA_PRESENTACION.length;
+  const salas: BoxData[] = [];
+  let desde = 0;
+  for (let i = 0; i < SALAS_INICIALES; i++) {
+    const cuantas = Math.ceil((total - desde) / (SALAS_INICIALES - i));
+    salas.push(crearSalaConMedia(i, MEDIA_PRESENTACION.slice(desde, desde + cuantas)));
+    desde += cuantas;
+  }
+  return salas;
+};
+
 export const usePresentationStore = create<PresentationState>((set, get) => ({
-  boxes: [
-    // Por defecto arranca con 3 salas; con "Nueva Sala" se agregan las que hagan falta.
-    createDefaultBox(0),
-    createDefaultBox(1),
-    createDefaultBox(2),
-  ],
+  // Arranca con la presentación cargada: 3 salas con todo el material en las
+  // paredes. Con "Nueva Sala" se agregan las que hagan falta.
+  boxes: crearSalasIniciales(),
   currentBoxIndex: 0,
   isInsideBox: false,
   mouseEnabled: true,
