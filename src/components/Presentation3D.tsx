@@ -1200,6 +1200,55 @@ export default function Presentation3D() {
     setCurrentSlide(0);
   };
 
+  // ── Reordenar e insertar láminas ──────────────────────────────────────────
+  // Índice que se está arrastrando; null cuando no hay arrastre en curso.
+  const [laminaArrastrada, setLaminaArrastrada] = useState<number | null>(null);
+
+  const reordenarLaminas = (desde: number | null, hasta: number) => {
+    if (desde === null || desde === hasta || !boxes[currentBoxIndex]) return;
+    const lista = [...boxes[currentBoxIndex].slides];
+    const [movida] = lista.splice(desde, 1);
+    lista.splice(hasta, 0, movida);
+    setSlides(currentBoxIndex, lista);
+    setCurrentSlide(hasta);   // se sigue viendo la lámina que se movió
+  };
+
+  // Inserta una lámina vacía DESPUÉS de la indicada (el botón "+" de la barra
+  // agrega al final; esto permite meterla en el medio).
+  const insertarLaminaDespues = (indice: number) => {
+    if (!boxes[currentBoxIndex]) return;
+    const lista = [...boxes[currentBoxIndex].slides];
+    lista.splice(indice + 1, 0, {
+      id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      imageUrl: '/zirkel/zirkel-logo.png',   // marcador de posición hasta que suban la imagen
+      subtitle: '',
+    });
+    setSlides(currentBoxIndex, lista);
+    setCurrentSlide(indice + 1);
+  };
+
+  // Props comunes de arrastre para los cuadraditos y las miniaturas. El origen
+  // viaja en el dataTransfer y no en el estado: el estado de React puede no
+  // haberse actualizado todavía cuando llega el drop, y ahí el reordenamiento se
+  // perdía. El estado queda solo para el resaltado visual.
+  const propsArrastre = (indice: number) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData('text/plain', String(indice));
+      e.dataTransfer.effectAllowed = 'move';
+      setLaminaArrastrada(indice);
+    },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      const crudo = e.dataTransfer.getData('text/plain');
+      const desde = crudo === '' ? laminaArrastrada : Number(crudo);
+      reordenarLaminas(Number.isFinite(desde as number) ? (desde as number) : null, indice);
+      setLaminaArrastrada(null);
+    },
+    onDragEnd: () => setLaminaArrastrada(null),
+  });
+
   const handleExport = () => {
     const data = getExportData();
     try {
@@ -1825,19 +1874,34 @@ export default function Presentation3D() {
             {/* Slide buttons - dynamic based on current box's slides, + add/remove buttons */}
             <div className="flex gap-2 items-center justify-center mb-4 flex-wrap">
               {boxes[currentBoxIndex].slides.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentSlide(idx)}
-                  className={`w-10 h-10 rounded-xl font-medium transition text-sm ${
-                    idx === currentSlideIndex
-                      ? 'text-white shadow-lg'
-                      : `${currentTheme.text} hover:opacity-70 border ${currentTheme.border}`
-                  }`}
-                  style={idx === currentSlideIndex ? { backgroundColor: currentTheme.accent } : { backgroundColor: isDarkMode ? 'rgba(55,65,81,0.5)' : 'rgba(243,244,246,1)' }}
-                  title={`Pared ${idx + 1}`}
-                >
-                  {idx + 1}
-                </button>
+                <div key={idx} className="relative group/lam">
+                  <button
+                    onClick={() => setCurrentSlide(idx)}
+                    {...propsArrastre(idx)}
+                    className={`w-10 h-10 rounded-xl font-medium transition text-sm cursor-grab active:cursor-grabbing ${
+                      idx === currentSlideIndex
+                        ? 'text-white shadow-lg'
+                        : `${currentTheme.text} hover:opacity-70 border ${currentTheme.border}`
+                    } ${laminaArrastrada !== null && laminaArrastrada !== idx ? 'ring-2 ring-dashed ring-[var(--theme-accent)]' : ''}`}
+                    style={{
+                      ...(idx === currentSlideIndex
+                        ? { backgroundColor: currentTheme.accent }
+                        : { backgroundColor: isDarkMode ? 'rgba(55,65,81,0.5)' : 'rgba(243,244,246,1)' }),
+                      ['--theme-accent' as string]: currentTheme.accent,
+                    } as React.CSSProperties}
+                    title={`Pared ${idx + 1} — arrastrá para reordenar`}
+                  >
+                    {idx + 1}
+                  </button>
+                  {/* Insertar una lámina nueva justo después de ésta */}
+                  <button
+                    onClick={() => insertarLaminaDespues(idx)}
+                    title={`Insertar una lámina después de la ${idx + 1}`}
+                    className="absolute -right-1.5 -top-1.5 w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover/lam:opacity-100 transition shadow"
+                  >
+                    +
+                  </button>
+                </div>
               ))}
               {/* Floor and ceiling */}
               {[{ label: 'P', title: 'Piso', idx: boxes[currentBoxIndex].slides.length }, { label: 'T', title: 'Techo', idx: boxes[currentBoxIndex].slides.length + 1 }].map(({ label, title, idx }) => (
@@ -2031,11 +2095,13 @@ export default function Presentation3D() {
               {boxes[currentBoxIndex].slides.map((slide, i) => (
                 <div
                   key={slide.id}
-                  className={`relative w-14 h-10 rounded-lg overflow-hidden cursor-pointer transition-all ${
-                    i === currentSlideIndex 
-                      ? 'ring-2 scale-105 ring-[var(--theme-accent)]' 
+                  {...propsArrastre(i)}
+                  title={`Pared ${i + 1} — arrastrá para reordenar`}
+                  className={`relative w-14 h-10 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing transition-all group/min ${
+                    i === currentSlideIndex
+                      ? 'ring-2 scale-105 ring-[var(--theme-accent)]'
                       : 'opacity-50 hover:opacity-80'
-                  }`}
+                  } ${laminaArrastrada !== null && laminaArrastrada !== i ? 'ring-1 ring-dashed ring-[var(--theme-accent)]' : ''}`}
                   style={{ '--theme-accent': currentTheme.accent } as React.CSSProperties}
                   onClick={() => setCurrentSlide(i)}
                 >
@@ -2044,6 +2110,14 @@ export default function Presentation3D() {
                     alt={`Pared ${i + 1}`}
                     className="w-full h-full object-cover"
                   />
+                  {/* Insertar una lámina nueva justo después de ésta */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); insertarLaminaDespues(i); }}
+                    title={`Insertar una lámina después de la ${i + 1}`}
+                    className="absolute top-0 right-0 w-4 h-4 bg-emerald-600 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover/min:opacity-100 transition rounded-bl"
+                  >
+                    +
+                  </button>
                   <div className={`absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 ${isDarkMode ? 'bg-black/60 text-white' : 'bg-white/80 text-gray-700'}`}>
                     {i + 1}
                   </div>
