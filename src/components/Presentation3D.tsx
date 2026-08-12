@@ -19,16 +19,141 @@ const TOPE_VIDEOS_REGISTRADOS = 80;   // cota: cada rearmado de la escena crea n
 // consulta esto al nacer para arrancar solo si le toca.
 let urlVideoActivo = '';
 
+// Reproduce con sonido. Si el navegador lo bloquea (política de autoplay: hace
+// falta una interacción previa del usuario), reintenta en mudo: mejor que suene
+// nada antes que no se vea el video.
+const reproducirConAudio = (el: HTMLVideoElement) => {
+  el.muted = false;
+  const promesa = el.play();
+  if (promesa && typeof promesa.catch === 'function') {
+    promesa.catch(() => {
+      el.muted = true;
+      el.play().catch(() => { /* ni así: queda en su primer cuadro */ });
+    });
+  }
+};
+
 const sincronizarVideos = (activa: string, precargar: string[] = []) => {
   urlVideoActivo = activa || '';
   for (const { url, el } of videosDeTexturas) {
     if (url === urlVideoActivo) {
-      if (el.paused) el.play().catch(() => { /* sin gesto del usuario aún */ });
+      // Sólo suena la lámina que se está viendo.
+      if (el.paused) reproducirConAudio(el);
+      else if (el.muted) el.muted = false;   // ya venía en mudo: se le da sonido
     } else {
       if (!el.paused) el.pause();
+      el.muted = true;
       // Las vecinas se descargan igual para que el cambio de lámina sea
       // inmediato: bajar el archivo es barato, decodificarlo es lo que pesa.
       if (precargar.includes(url) && el.preload !== 'auto') el.preload = 'auto';
+    }
+  }
+};
+
+// Cielo nocturno animado: estrellas que titilan y fugaces que cruzan dejando
+// estela. Va como objetos 3D y no dibujado en el fondo, porque el fondo es una
+// textura estática y redibujarla en cada cuadro (2048x1024) sería carísimo.
+const crearCieloAnimado = (): THREE.Group => {
+  const grupo = new THREE.Group();
+  grupo.name = 'cieloAnimado';
+
+  // ── Estrellas ──
+  const cantidad = 700;
+  const posiciones = new Float32Array(cantidad * 3);
+  const fases = new Float32Array(cantidad);
+  const tamanios = new Float32Array(cantidad);
+  for (let i = 0; i < cantidad; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random());      // hemisferio de arriba
+    const radio = 380;
+    posiciones[i * 3] = radio * Math.sin(phi) * Math.cos(theta);
+    posiciones[i * 3 + 1] = radio * Math.cos(phi) * 0.85 + 12;
+    posiciones[i * 3 + 2] = radio * Math.sin(phi) * Math.sin(theta);
+    fases[i] = Math.random() * Math.PI * 2;    // cada una titila a su tiempo
+    tamanios[i] = 1.5 + Math.random() * 3.5;
+  }
+  const geoEstrellas = new THREE.BufferGeometry();
+  geoEstrellas.setAttribute('position', new THREE.Float32BufferAttribute(posiciones, 3));
+  geoEstrellas.setAttribute('fase', new THREE.Float32BufferAttribute(fases, 1));
+  geoEstrellas.setAttribute('tam', new THREE.Float32BufferAttribute(tamanios, 1));
+  const matEstrellas = new THREE.ShaderMaterial({
+    uniforms: { tiempo: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+      attribute float fase;
+      attribute float tam;
+      uniform float tiempo;
+      varying float vAlfa;
+      void main() {
+        vAlfa = 0.30 + 0.70 * (0.5 + 0.5 * sin(tiempo * 1.7 + fase));
+        gl_PointSize = tam;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying float vAlfa;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        gl_FragColor = vec4(vec3(1.0), vAlfa * smoothstep(0.5, 0.0, d));
+      }`,
+  });
+  grupo.add(new THREE.Points(geoEstrellas, matEstrellas));
+  grupo.userData.matEstrellas = matEstrellas;
+
+  // ── Fugaces ── el objeto mira hacia -Z, así que la estela va hacia +Z.
+  const fugaces: THREE.Line[] = [];
+  for (let i = 0; i < 3; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 26),
+    ]);
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const linea = new THREE.Line(geo, mat);
+    linea.userData = { activa: false, espera: 2 + Math.random() * 8, vida: 0, dir: new THREE.Vector3() };
+    fugaces.push(linea);
+    grupo.add(linea);
+  }
+  grupo.userData.fugaces = fugaces;
+  return grupo;
+};
+
+// Avanza la animación del cielo. dt en segundos.
+const animarCielo = (grupo: THREE.Group, tiempo: number, dt: number) => {
+  const mat = grupo.userData.matEstrellas as THREE.ShaderMaterial | undefined;
+  if (mat) mat.uniforms.tiempo.value = tiempo;
+
+  const fugaces = (grupo.userData.fugaces || []) as THREE.Line[];
+  for (const f of fugaces) {
+    const d = f.userData;
+    if (!d.activa) {
+      d.espera -= dt;
+      if (d.espera <= 0) {
+        const ang = Math.random() * Math.PI * 2;
+        f.position.set(Math.cos(ang) * 280, 130 + Math.random() * 130, Math.sin(ang) * 280);
+        d.dir.set(-Math.cos(ang) * 0.7 + (Math.random() - 0.5) * 0.6, -0.45 - Math.random() * 0.35, -Math.sin(ang) * 0.7)
+          .normalize()
+          .multiplyScalar(150);          // unidades por segundo
+        f.lookAt(f.position.clone().add(d.dir));
+        d.vida = 0;
+        d.activa = true;
+      }
+      continue;
+    }
+    f.position.addScaledVector(d.dir, dt);
+    d.vida += dt;
+    const material = f.material as THREE.LineBasicMaterial;
+    material.opacity = Math.max(0, Math.sin(Math.min(d.vida / 1.3, 1) * Math.PI));
+    if (d.vida > 1.3) {
+      d.activa = false;
+      d.espera = 3 + Math.random() * 11;
+      material.opacity = 0;
     }
   }
 };
@@ -69,6 +194,8 @@ const loadMediaAsTexture = (url: string, onLoad: (texture: THREE.Texture) => voi
       video.src = url;
       video.crossOrigin = 'anonymous';
       video.loop = true;
+      // Nace en mudo: hace falta para poder cargar el primer cuadro sin que el
+      // navegador bloquee nada. Si le toca ser la lámina activa, se le da sonido.
       video.muted = true;
       video.playsInline = true;
       video.preload = 'auto';
@@ -76,7 +203,7 @@ const loadMediaAsTexture = (url: string, onLoad: (texture: THREE.Texture) => voi
       // textura no tendría ningún cuadro y la cara se vería negra.
       video.load();
       if (url === urlVideoActivo) {
-        video.play().catch(e => console.error('Auto-play prevented', e));
+        reproducirConAudio(video);
       }
       if (videosDeTexturas.length >= TOPE_VIDEOS_REGISTRADOS) {
         const viejo = videosDeTexturas.shift();
@@ -152,6 +279,10 @@ export default function Presentation3D() {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const boxesRef = useRef<THREE.Group[]>([]);
   const insideBoxGroupRef = useRef<THREE.Group | null>(null);
+  // Cielo nocturno animado (estrellas que titilan y fugaces). Vive aparte del
+  // fondo estático porque necesita actualizarse en cada cuadro.
+  const cieloAnimadoRef = useRef<THREE.Group | null>(null);
+  const ultimoCuadroRef = useRef<number>(0);
   const cameraTargetRef = useRef(new THREE.Vector3(0, 4, 0));
   const targetCameraPositionRef = useRef(new THREE.Vector3(0, 15, 30));
   const mouseRef = useRef({ x: 0, y: 0, isDown: false });
@@ -723,41 +854,164 @@ export default function Presentation3D() {
 
     const scene = sceneRef.current;
 
-    // Update background
-    const canvas = document.createElement('canvas');
-    canvas.width = 2;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+    // Cielo del fondo. Se dibuja en un canvas y se mapea como equirectangular,
+    // así envuelve la escena y da sensación de lejanía al girar (con una imagen
+    // plana el fondo queda pegado a la pantalla y no se percibe profundidad).
+    const cielo = document.createElement('canvas');
+    cielo.width = 2048;
+    cielo.height = 1024;
+    const g = cielo.getContext('2d');
+    if (g) {
       if (isDarkMode) {
-        gradient.addColorStop(0, '#1a1a2e');
-        gradient.addColorStop(1, '#0a0a0f');
+        // Noche espacial: degradado, nebulosas tenues y estrellas.
+        const grad = g.createLinearGradient(0, 0, 0, 1024);
+        grad.addColorStop(0, '#04050d');
+        grad.addColorStop(0.55, '#0b1026');
+        grad.addColorStop(1, '#161d3a');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 2048, 1024);
+
+        for (let i = 0; i < 14; i++) {
+          const x = Math.random() * 2048;
+          const y = Math.random() * 620;
+          const r = 130 + Math.random() * 280;
+          const tono = Math.random() > 0.5 ? '90,130,255' : '150,80,220';
+          const neb = g.createRadialGradient(x, y, 0, x, y, r);
+          neb.addColorStop(0, `rgba(${tono},0.11)`);
+          neb.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = neb;
+          g.beginPath();
+          g.arc(x, y, r, 0, Math.PI * 2);
+          g.fill();
+        }
+
+        for (let i = 0; i < 1500; i++) {
+          const x = Math.random() * 2048;
+          // Se concentran arriba: cerca del horizonte casi no se ven.
+          const y = Math.pow(Math.random(), 1.4) * 900;
+          const r = Math.random() * 1.4 + 0.25;
+          g.globalAlpha = 0.25 + Math.random() * 0.75;
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.arc(x, y, r, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.globalAlpha = 1;
+
+        // Nubes de noche: apenas iluminadas y bajas, cerca del horizonte, para
+        // que no tapen el campo de estrellas.
+        const nubeNocturna = (cx: number, cy: number, escala: number) => {
+          for (let i = 0; i < 16; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = Math.random() * 95 * escala;
+            const x = cx + Math.cos(ang) * dist * 2.4;
+            const y = cy + Math.sin(ang) * dist * 0.45;
+            const r = (34 + Math.random() * 60) * escala;
+            const gr = g.createRadialGradient(x, y, 0, x, y, r);
+            gr.addColorStop(0, 'rgba(120,140,200,0.16)');
+            gr.addColorStop(1, 'rgba(120,140,200,0)');
+            g.fillStyle = gr;
+            g.beginPath();
+            g.arc(x, y, r, 0, Math.PI * 2);
+            g.fill();
+          }
+        };
+        for (let i = 0; i < 6; i++) {
+          nubeNocturna(Math.random() * 2048, 620 + Math.random() * 300, 0.7 + Math.random() * 0.7);
+        }
       } else {
-        gradient.addColorStop(0, '#E0F4FF');
-        gradient.addColorStop(1, '#FFFFFF');
+        // Día soleado: cielo azul, sol con halo y cúmulos de nubes.
+        const grad = g.createLinearGradient(0, 0, 0, 1024);
+        grad.addColorStop(0, '#2f83d6');
+        grad.addColorStop(0.6, '#93cbf2');
+        grad.addColorStop(1, '#eaf6ff');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 2048, 1024);
+
+        const sx = 1480;
+        const sy = 230;
+        const sol = g.createRadialGradient(sx, sy, 0, sx, sy, 330);
+        sol.addColorStop(0, 'rgba(255,251,225,0.95)');
+        sol.addColorStop(0.14, 'rgba(255,245,195,0.5)');
+        sol.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = sol;
+        g.fillRect(sx - 340, sy - 340, 680, 680);
+
+        const nube = (cx: number, cy: number, escala: number) => {
+          for (let i = 0; i < 18; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = Math.random() * 90 * escala;
+            const x = cx + Math.cos(ang) * dist * 2.2;
+            const y = cy + Math.sin(ang) * dist * 0.5;
+            const r = (30 + Math.random() * 55) * escala;
+            const gr = g.createRadialGradient(x, y, 0, x, y, r);
+            gr.addColorStop(0, 'rgba(255,255,255,0.85)');
+            gr.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = gr;
+            g.beginPath();
+            g.arc(x, y, r, 0, Math.PI * 2);
+            g.fill();
+          }
+        };
+        for (let i = 0; i < 10; i++) {
+          nube(Math.random() * 2048, 200 + Math.random() * 460, 0.6 + Math.random() * 0.85);
+        }
       }
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 2, 512);
     }
-    const texture = new THREE.CanvasTexture(canvas);
-    scene.background = texture;
-    scene.fog = new THREE.Fog(isDarkMode ? 0x0a0a0f : 0xFFFFFF, 50, 200);
+    const texturaCielo = new THREE.CanvasTexture(cielo);
+    texturaCielo.colorSpace = THREE.SRGBColorSpace;
+    texturaCielo.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background?.dispose?.();
+    scene.background = texturaCielo;
+
+    // La niebla toma el color del horizonte del cielo: es lo que hace que la
+    // grilla y lo lejano se disuelvan ahí en vez de cortarse de golpe.
+    const colorHorizonte = isDarkMode ? 0x161d3a : 0xeaf6ff;
+    scene.fog = new THREE.Fog(colorHorizonte, 45, 150);
+
+    // Estrellas que titilan y fugaces: sólo de noche. Se rehacen al cambiar
+    // de tema y se liberan las anteriores.
+    if (cieloAnimadoRef.current) {
+      scene.remove(cieloAnimadoRef.current);
+      liberarGrupo(cieloAnimadoRef.current);
+      cieloAnimadoRef.current = null;
+    }
+    if (isDarkMode) {
+      const animado = crearCieloAnimado();
+      cieloAnimadoRef.current = animado;
+      scene.add(animado);
+    }
 
     // Update grid color and opacity
     const existingGrid = scene.getObjectByName('gridHelper');
     if (existingGrid) {
       scene.remove(existingGrid);
+      liberarGrupo(existingGrid);
     }
-    
-    // Create new grid with updated colors
-    const gridColor = isDarkMode ? 0x1a1a2e : 0xE0E0E0;
-    const newGrid = new THREE.GridHelper(100, 50, gridColor, gridColor);
+
+    // Piso CIRCULAR: con una grilla cuadrada se veían las esquinas recortadas
+    // contra el horizonte. Se arma a mano con las mismas líneas rectas, pero
+    // cortando cada una contra un círculo, así el borde es siempre redondo y la
+    // niebla lo disuelve parejo en todas las direcciones.
+    const radioPiso = 150;
+    const pasoGrilla = 2.5;
+    const puntos: number[] = [];
+    for (let c = -radioPiso; c <= radioPiso + 0.001; c += pasoGrilla) {
+      const medio = Math.sqrt(Math.max(0, radioPiso * radioPiso - c * c));
+      if (medio <= 0.01) continue;
+      puntos.push(-medio, 0, c, medio, 0, c);   // líneas en el eje X
+      puntos.push(c, 0, -medio, c, 0, medio);   // líneas en el eje Z
+    }
+    const geometriaGrilla = new THREE.BufferGeometry();
+    geometriaGrilla.setAttribute('position', new THREE.Float32BufferAttribute(puntos, 3));
+    const materialGrilla = new THREE.LineBasicMaterial({
+      color: isDarkMode ? 0x2a3566 : 0xc9d6e4,
+      transparent: true,
+      opacity: isDarkMode ? 0.55 : 0.5,
+      fog: true,
+    });
+    const newGrid = new THREE.LineSegments(geometriaGrilla, materialGrilla);
     newGrid.name = 'gridHelper';
-    if (!isDarkMode) {
-      (newGrid.material as THREE.Material).transparent = true;
-      (newGrid.material as THREE.Material).opacity = 0.5;
-    }
     scene.add(newGrid);
   }, [isDarkMode]);
 
@@ -802,6 +1056,12 @@ export default function Presentation3D() {
       animationFrameRef.current = requestAnimationFrame(animate);
 
       if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+
+      // Titileo de las estrellas y estrellas fugaces (sólo de noche).
+      const ahora = performance.now();
+      const dt = Math.min((ahora - (ultimoCuadroRef.current || ahora)) / 1000, 0.1);
+      ultimoCuadroRef.current = ahora;
+      if (cieloAnimadoRef.current) animarCielo(cieloAnimadoRef.current, ahora * 0.001, dt);
 
       const camera = cameraRef.current;
 
@@ -1015,7 +1275,34 @@ export default function Presentation3D() {
     container.addEventListener('mouseup', handleMouseUp);
     container.addEventListener('mousemove', handleMouseMove);
     container.addEventListener('wheel', handleWheel, { passive: false });
+    // Doble clic sobre una sala en la galería: entra directamente a esa, sin
+    // tener que seleccionarla antes con las flechas y apretar "Entrar".
+    const handleDobleClic = (e: MouseEvent) => {
+      if (isInsideBox || !cameraRef.current || boxesRef.current.length === 0) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      const tocados = raycaster.intersectObjects(boxesRef.current, true);
+      if (tocados.length === 0) return;
+
+      // El rayo pega en una pared; hay que subir por los padres hasta el grupo
+      // de la sala para saber cuál es.
+      let objeto: THREE.Object3D | null = tocados[0].object;
+      let indice = -1;
+      while (objeto && indice === -1) {
+        indice = boxesRef.current.indexOf(objeto as THREE.Group);
+        objeto = objeto.parent;
+      }
+      if (indice >= 0) {
+        setCurrentBox(indice);
+        enterBox(indice);
+      }
+    };
+
     container.addEventListener('click', handleClick);
+    container.addEventListener('dblclick', handleDobleClic);
 
     return () => {
       container.removeEventListener('mousedown', handleMouseDown);
@@ -1023,8 +1310,9 @@ export default function Presentation3D() {
       container.removeEventListener('mousemove', handleMouseMove);
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('click', handleClick);
+      container.removeEventListener('dblclick', handleDobleClic);
     };
-  }, [mouseEnabled, isInsideBox, currentBoxIndex, setCurrentBox, focusOnBox, exitBox]);
+  }, [mouseEnabled, isInsideBox, currentBoxIndex, setCurrentBox, focusOnBox, exitBox, enterBox]);
 
   // Keyboard controls
   useEffect(() => {
@@ -1716,6 +2004,48 @@ export default function Presentation3D() {
                 {getCurrentSubtitle()}
               </h2>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Galería con la interfaz reducida (primer toque de H): quedan solo el
+          botón de entrar y el indicador de sala. En el nivel 2 no queda nada.
+          Se repite el marcado a propósito, para no condicionar media docena de
+          bloques del panel completo. */}
+      {!isInsideBox && nivelUI === 1 && (
+        <div className="absolute bottom-0 left-0 right-0 p-4 z-10 pointer-events-none">
+          <div className="flex justify-center gap-3 flex-wrap pointer-events-auto">
+            <button
+              onClick={() => enterBox(currentBoxIndex)}
+              className="bg-gradient-to-r from-green-600 to-teal-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-green-500 hover:to-teal-500 transition shadow-lg shadow-green-500/25"
+            >
+              🚀 Entrar a Sala {currentBoxIndex + 1}
+            </button>
+            <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl p-1 border ${currentTheme.border}`}>
+              <button
+                onClick={() => {
+                  const nuevo = (currentBoxIndex - 1 + boxes.length) % boxes.length;
+                  setCurrentBox(nuevo);
+                  focusOnBox(nuevo);
+                }}
+                className={`${currentTheme.text} px-3 py-1.5 rounded-lg hover:opacity-70 transition`}
+              >
+                ⬅️
+              </button>
+              <span className={`${currentTheme.text} text-sm px-2 font-medium`}>
+                {currentBoxIndex + 1} / {boxes.length}
+              </span>
+              <button
+                onClick={() => {
+                  const nuevo = (currentBoxIndex + 1) % boxes.length;
+                  setCurrentBox(nuevo);
+                  focusOnBox(nuevo);
+                }}
+                className={`${currentTheme.text} px-3 py-1.5 rounded-lg hover:opacity-70 transition`}
+              >
+                ➡️
+              </button>
+            </div>
           </div>
         </div>
       )}
