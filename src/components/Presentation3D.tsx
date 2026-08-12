@@ -124,69 +124,6 @@ const crearCieloAnimado = (): THREE.Group => {
   return grupo;
 };
 
-// Bandada para el modo día: siluetas simples (una "V" de dos segmentos) que
-// cruzan el cielo en grupo y reaparecen del otro lado. Se dibujan como líneas,
-// que a esta distancia leen igual que un pájaro y no cuestan nada.
-const crearPajaros = (): THREE.Group => {
-  const bandada = new THREE.Group();
-  bandada.name = 'pajaros';
-
-  const material = new THREE.LineBasicMaterial({
-    color: 0x2f3a45,
-    transparent: true,
-    opacity: 0.55,
-    fog: false,
-  });
-
-  const cantidad = 11;
-  for (let i = 0; i < cantidad; i++) {
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-1, 0, 0),
-      new THREE.Vector3(0, 0.42, 0),
-      new THREE.Vector3(1, 0, 0),
-    ]);
-    const pajaro = new THREE.Line(geo, material.clone());
-    const escala = 2.2 + Math.random() * 1.6;
-    pajaro.scale.setScalar(escala);
-    // Formación en V, desplegada alrededor de un líder.
-    const fila = Math.floor(i / 2);
-    const lado = i % 2 === 0 ? 1 : -1;
-    pajaro.userData = {
-      offset: new THREE.Vector3(fila * 7 * lado, fila * 1.6 + Math.random() * 2, fila * 5),
-      faseAleteo: Math.random() * Math.PI * 2,
-      velAleteo: 5 + Math.random() * 3,
-    };
-    bandada.add(pajaro);
-  }
-  // Altura y recorrido pensados para que crucen por el tercio superior del
-  // encuadre: mas alto se salian de cuadro y no se veian nunca.
-  bandada.userData = { progreso: Math.random(), duracion: 15 + Math.random() * 8, altura: 19 + Math.random() * 13 };
-  return bandada;
-};
-
-const animarPajaros = (bandada: THREE.Group, tiempo: number, dt: number) => {
-  const d = bandada.userData;
-  d.progreso += dt / d.duracion;
-  if (d.progreso > 1) {
-    // Nuevo cruce: otra altura y otra dirección.
-    d.progreso = 0;
-    d.duracion = 26 + Math.random() * 14;
-    d.altura = 19 + Math.random() * 13;
-    d.rumbo = Math.random() * Math.PI * 2;
-  }
-  const rumbo = d.rumbo ?? (d.rumbo = Math.random() * Math.PI * 2);
-  const avance = (d.progreso - 0.5) * 200;      // entra y sale de la escena
-  bandada.position.set(Math.cos(rumbo) * avance, d.altura, Math.sin(rumbo) * avance);
-  bandada.rotation.y = -rumbo;
-
-  for (const p of bandada.children) {
-    const u = p.userData;
-    p.position.copy(u.offset);
-    // Aleteo: se abre y cierra la V.
-    p.scale.y = p.scale.x * (0.55 + 0.45 * Math.sin(tiempo * u.velAleteo + u.faseAleteo));
-  }
-};
-
 // Avanza la animación del cielo. dt en segundos.
 const animarCielo = (grupo: THREE.Group, tiempo: number, dt: number) => {
   const mat = grupo.userData.matEstrellas as THREE.ShaderMaterial | undefined;
@@ -345,7 +282,6 @@ export default function Presentation3D() {
   // Cielo nocturno animado (estrellas que titilan y fugaces). Vive aparte del
   // fondo estático porque necesita actualizarse en cada cuadro.
   const cieloAnimadoRef = useRef<THREE.Group | null>(null);
-  const pajarosRef = useRef<THREE.Group | null>(null);
   const ultimoCuadroRef = useRef<number>(0);
   const cameraTargetRef = useRef(new THREE.Vector3(0, 4, 0));
   const targetCameraPositionRef = useRef(new THREE.Vector3(0, 15, 30));
@@ -1168,18 +1104,6 @@ export default function Presentation3D() {
       scene.add(animado);
     }
 
-    // De día, una bandada cruzando el cielo cada tanto.
-    if (pajarosRef.current) {
-      scene.remove(pajarosRef.current);
-      liberarGrupo(pajarosRef.current);
-      pajarosRef.current = null;
-    }
-    if (!isDarkMode) {
-      const bandada = crearPajaros();
-      pajarosRef.current = bandada;
-      scene.add(bandada);
-    }
-
     // Update grid color and opacity
     const existingGrid = scene.getObjectByName('gridHelper');
     if (existingGrid) {
@@ -1260,7 +1184,6 @@ export default function Presentation3D() {
       const dt = Math.min((ahora - (ultimoCuadroRef.current || ahora)) / 1000, 0.1);
       ultimoCuadroRef.current = ahora;
       if (cieloAnimadoRef.current) animarCielo(cieloAnimadoRef.current, ahora * 0.001, dt);
-      if (pajarosRef.current) animarPajaros(pajarosRef.current, ahora * 0.001, dt);
 
       const camera = cameraRef.current;
 
