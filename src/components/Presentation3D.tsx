@@ -4,30 +4,115 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore, crearSalasIniciales, crearSalasVacias } from '@/lib/presentation-store';
 
+// ── Control de reproducción de los videos ───────────────────────────────────
+// Cada cara con video crea su propio elemento <video> para la textura. Si todos
+// se reproducen a la vez (una sala puede tener varios) el decodificado satura la
+// máquina y en una notebook con proyector se traba. Acá se lleva un registro y
+// SOLO suena el de la lámina que se está viendo; el resto queda pausado en su
+// primer cuadro (la textura igual se ve, three.js toma el fotograma actual).
+type VideoDeTextura = { url: string; el: HTMLVideoElement };
+const videosDeTexturas: VideoDeTextura[] = [];
+const TOPE_VIDEOS_REGISTRADOS = 80;   // cota: cada rearmado de la escena crea nuevos
+
+// URL del video que debe estar sonando. Es una variable de módulo porque los
+// <video> se crean de a poco, después del efecto que decide cuál va: cada uno
+// consulta esto al nacer para arrancar solo si le toca.
+let urlVideoActivo = '';
+
+const sincronizarVideos = (activa: string, precargar: string[] = []) => {
+  urlVideoActivo = activa || '';
+  for (const { url, el } of videosDeTexturas) {
+    if (url === urlVideoActivo) {
+      if (el.paused) el.play().catch(() => { /* sin gesto del usuario aún */ });
+    } else {
+      if (!el.paused) el.pause();
+      // Las vecinas se descargan igual para que el cambio de lámina sea
+      // inmediato: bajar el archivo es barato, decodificarlo es lo que pesa.
+      if (precargar.includes(url) && el.preload !== 'auto') el.preload = 'auto';
+    }
+  }
+};
+
+// Cache de texturas por archivo. La escena se rearma entera en CADA cambio de
+// lámina; sin esto cada rearmado subía otra copia de la misma imagen a la GPU y
+// la anterior quedaba colgada (nunca se liberaba). Ahí estaba el "arranca bien y
+// después se va poniendo lento": a las 15 láminas había ~90 texturas de 720p
+// vivas. Con el cache hay UNA textura por archivo y los rearmados salen gratis.
+const texturasPorUrl = new Map<string, THREE.Texture>();
+
+// Libera un grupo que se saca de la escena: geometrías y materiales, que sí son
+// nuevos en cada rearmado. Las texturas NO se tocan, viven en el cache y se
+// reutilizan; liberarlas obligaría a volver a decodificar cada archivo.
+const liberarGrupo = (raiz: THREE.Object3D) => {
+  raiz.traverse((obj) => {
+    const malla = obj as THREE.Mesh;
+    if (malla.geometry) malla.geometry.dispose();
+    const material = malla.material;
+    if (Array.isArray(material)) material.forEach((m) => m.dispose());
+    else if (material) (material as THREE.Material).dispose();
+  });
+};
+
 const loadMediaAsTexture = (url: string, onLoad: (texture: THREE.Texture) => void) => {
   if (!url) return;
+  const enCache = texturasPorUrl.get(url);
+  if (enCache) { onLoad(enCache); return; }
   const isVideo = url.startsWith('data:video/') || url.endsWith('.mp4');
   if (isVideo) {
-    const video = document.createElement('video');
-    video.src = url;
-    video.crossOrigin = 'anonymous';
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
-    video.play().catch(e => console.error("Auto-play prevented", e));
+    // Un mismo archivo aparece en varias mallas (cara interior, exterior, la
+    // vista de galería). Se reutiliza UN elemento por archivo: varias
+    // VideoTextures pueden compartirlo y así se decodifica una sola vez, en vez
+    // de abrir cinco decodificadores del mismo video.
+    let video = videosDeTexturas.find((v) => v.url === url)?.el;
+    if (!video) {
+      video = document.createElement('video');
+      video.src = url;
+      video.crossOrigin = 'anonymous';
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      // Nace pausado: arranca solo si es la lámina activa. Sin el load() la
+      // textura no tendría ningún cuadro y la cara se vería negra.
+      video.load();
+      if (url === urlVideoActivo) {
+        video.play().catch(e => console.error('Auto-play prevented', e));
+      }
+      if (videosDeTexturas.length >= TOPE_VIDEOS_REGISTRADOS) {
+        const viejo = videosDeTexturas.shift();
+        if (viejo && !viejo.el.paused) viejo.el.pause();
+      }
+      videosDeTexturas.push({ url, el: video });
+    }
     const texture = new THREE.VideoTexture(video);
+    texturasPorUrl.set(url, texture);
     onLoad(texture);
   } else {
     new THREE.TextureLoader().load(url, (texture) => {
+      texturasPorUrl.set(url, texture);
       onLoad(texture);
     });
   }
 };
 
+// Miniaturas del panel de edición. NO se reproducen: son previsualizaciones, y
+// con una presentación de varios videos todas sonando a la vez el decodificado
+// satura la máquina (era la causa real de que se trabara, no las texturas).
+// Se muestra un cuadro fijo: sin el salto a currentTime la miniatura sale negra.
 const MediaPreview = ({ src, alt, className }: { src: string; alt?: string; className?: string }) => {
   const isVideo = src?.startsWith('data:video/') || src?.endsWith('.mp4');
   if (isVideo) {
-    return <video src={src} className={className} autoPlay loop muted playsInline />;
+    return (
+      <video
+        src={src}
+        className={className}
+        loop
+        muted
+        playsInline
+        preload="metadata"
+        ref={(el) => { if (el && el.currentTime === 0) el.currentTime = 0.1; }}
+      />
+    );
   }
   return <img src={src} alt={alt || 'Media'} className={className} />;
 };
@@ -121,6 +206,24 @@ export default function Presentation3D() {
     version,
     incrementVersion
   } = usePresentationStore();
+
+  // Solo suena el video de la lámina que se está viendo. Adentro del cubo es la
+  // cara actual; desde la galería, la primera de la sala enfocada (que es la que
+  // se ve en el exterior). Las vecinas quedan precargadas para que el cambio no
+  // tenga espera.
+  useEffect(() => {
+    const sala = boxes[currentBoxIndex];
+    if (!sala) { sincronizarVideos(''); return; }
+    const urlDe = (i: number) => sala.slides[i]?.imageUrl || '';
+    if (isInsideBox) {
+      const cantidad = sala.slides.length;
+      const anterior = urlDe((currentSlideIndex - 1 + cantidad) % cantidad);
+      const siguiente = urlDe((currentSlideIndex + 1) % cantidad);
+      sincronizarVideos(urlDe(currentSlideIndex), [anterior, siguiente]);
+    } else {
+      sincronizarVideos(urlDe(0));
+    }
+  }, [boxes, currentBoxIndex, currentSlideIndex, isInsideBox]);
 
   // Theme colors - memoized to prevent unnecessary re-renders
   const currentTheme = useMemo(() => {
@@ -486,6 +589,7 @@ export default function Presentation3D() {
 
     if (insideBoxGroupRef.current) {
       sceneRef.current.remove(insideBoxGroupRef.current);
+      liberarGrupo(insideBoxGroupRef.current);
     }
     
     const insideGroup = createInsideView(boxData);
@@ -504,6 +608,7 @@ export default function Presentation3D() {
 
     if (insideBoxGroupRef.current) {
       sceneRef.current.remove(insideBoxGroupRef.current);
+      liberarGrupo(insideBoxGroupRef.current);
       insideBoxGroupRef.current = null;
     }
 
@@ -636,6 +741,7 @@ export default function Presentation3D() {
 
     boxesRef.current.forEach(box => {
       sceneRef.current?.remove(box);
+      liberarGrupo(box);   // sin esto, cada rearmado dejaba las mallas viejas en la GPU
     });
     boxesRef.current = [];
 
@@ -654,6 +760,9 @@ export default function Presentation3D() {
 
     if (insideBoxGroupRef.current) {
       sceneRef.current.remove(insideBoxGroupRef.current);
+      // Este efecto corre en CADA cambio de lamina: sin liberar, la sala vieja
+      // quedaba entera en memoria y la app se iba frenando lamina tras lamina.
+      liberarGrupo(insideBoxGroupRef.current);
     }
 
     const insideGroup = createInsideView(boxes[currentBoxIndex]);
@@ -882,7 +991,7 @@ export default function Presentation3D() {
         case 'ArrowUp':
         case 'ArrowLeft':
           if (isInsideBox) {
-            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
+            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length : 4;
             const newSlideIndex = (currentSlideIndex - 1 + total) % total;
             setCurrentSlide(newSlideIndex);
           } else {
@@ -894,7 +1003,7 @@ export default function Presentation3D() {
         case 'ArrowDown':
         case 'ArrowRight':
           if (isInsideBox) {
-            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
+            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length : 4;
             const newSlideIndex = (currentSlideIndex + 1) % total;
             setCurrentSlide(newSlideIndex);
           } else {
@@ -1427,7 +1536,7 @@ export default function Presentation3D() {
         <>
           <button
             onClick={() => {
-              const total = boxes[currentBoxIndex].slides.length + 2;
+              const total = boxes[currentBoxIndex].slides.length;
               setCurrentSlide((currentSlideIndex - 1 + total) % total);
             }}
             className={`absolute left-6 top-1/2 -translate-y-1/2 z-30 w-12 h-24 flex items-center justify-center ${currentTheme.panelBg} hover:opacity-80 transition-all rounded-xl backdrop-blur-md group border ${currentTheme.border} shadow-lg`}
@@ -1440,7 +1549,7 @@ export default function Presentation3D() {
           
           <button
             onClick={() => {
-              const total = boxes[currentBoxIndex].slides.length + 2;
+              const total = boxes[currentBoxIndex].slides.length;
               setCurrentSlide((currentSlideIndex + 1) % total);
             }}
             className={`absolute right-6 top-1/2 -translate-y-1/2 z-30 w-12 h-24 flex items-center justify-center ${currentTheme.panelBg} hover:opacity-80 transition-all rounded-xl backdrop-blur-md group border ${currentTheme.border} shadow-lg`}
@@ -1648,7 +1757,7 @@ export default function Presentation3D() {
             <div className="flex items-center justify-between mb-3">
               <span className={`${currentTheme.text} font-semibold text-lg`}>{boxes[currentBoxIndex]?.name}</span>
               <span className="text-sm px-3 py-1 rounded-full" style={{ color: currentTheme.accent, backgroundColor: `${currentTheme.accent}20` }}>
-                {currentSlideIndex < boxes[currentBoxIndex].slides.length ? `Pared ${currentSlideIndex + 1}` : (currentSlideIndex === boxes[currentBoxIndex].slides.length ? 'Piso' : 'Techo')} ({currentSlideIndex + 1}/{boxes[currentBoxIndex].slides.length + 2})
+                {currentSlideIndex < boxes[currentBoxIndex].slides.length ? `Pared ${currentSlideIndex + 1}` : (currentSlideIndex === boxes[currentBoxIndex].slides.length ? 'Piso' : 'Techo')} ({currentSlideIndex + 1}/{boxes[currentBoxIndex].slides.length})
               </span>
             </div>
             
