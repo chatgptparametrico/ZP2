@@ -93,6 +93,7 @@ const MEDIA_PRESENTACION: string[] = [
   '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
   '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg', '34.mp4', '35.mp4', '36.jpg',
   '37.mp4', '38.mp4', '39.mp4', '40.jpg', '41.jpg', '42.jpg', '43.jpg',
+  '44.mp4', '45.mp4', '46.mp4',
 ];
 
 const SALAS_INICIALES = 3;
