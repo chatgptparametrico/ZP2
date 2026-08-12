@@ -157,3 +157,13 @@
   backface-visibility: visible;
   box-shadow: inset 0 0 4px rgba(0,0,0,0.3);
 }
+
+/* Firma de la esquina: el logo gira en 3D sobre su eje vertical. */
+@keyframes giroLogoZirkel {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(360deg); }
+}
+.logo-zirkel-3d {
+  animation: giroLogoZirkel 7s linear infinite;
+  transform-style: preserve-3d;
+}

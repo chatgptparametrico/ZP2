@@ -124,6 +124,69 @@ const crearCieloAnimado = (): THREE.Group => {
   return grupo;
 };
 
+// Bandada para el modo día: siluetas simples (una "V" de dos segmentos) que
+// cruzan el cielo en grupo y reaparecen del otro lado. Se dibujan como líneas,
+// que a esta distancia leen igual que un pájaro y no cuestan nada.
+const crearPajaros = (): THREE.Group => {
+  const bandada = new THREE.Group();
+  bandada.name = 'pajaros';
+
+  const material = new THREE.LineBasicMaterial({
+    color: 0x2f3a45,
+    transparent: true,
+    opacity: 0.55,
+    fog: false,
+  });
+
+  const cantidad = 11;
+  for (let i = 0; i < cantidad; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, 0.42, 0),
+      new THREE.Vector3(1, 0, 0),
+    ]);
+    const pajaro = new THREE.Line(geo, material.clone());
+    const escala = 2.2 + Math.random() * 1.6;
+    pajaro.scale.setScalar(escala);
+    // Formación en V, desplegada alrededor de un líder.
+    const fila = Math.floor(i / 2);
+    const lado = i % 2 === 0 ? 1 : -1;
+    pajaro.userData = {
+      offset: new THREE.Vector3(fila * 7 * lado, fila * 1.6 + Math.random() * 2, fila * 5),
+      faseAleteo: Math.random() * Math.PI * 2,
+      velAleteo: 5 + Math.random() * 3,
+    };
+    bandada.add(pajaro);
+  }
+  // Altura y recorrido pensados para que crucen por el tercio superior del
+  // encuadre: mas alto se salian de cuadro y no se veian nunca.
+  bandada.userData = { progreso: Math.random(), duracion: 15 + Math.random() * 8, altura: 19 + Math.random() * 13 };
+  return bandada;
+};
+
+const animarPajaros = (bandada: THREE.Group, tiempo: number, dt: number) => {
+  const d = bandada.userData;
+  d.progreso += dt / d.duracion;
+  if (d.progreso > 1) {
+    // Nuevo cruce: otra altura y otra dirección.
+    d.progreso = 0;
+    d.duracion = 26 + Math.random() * 14;
+    d.altura = 19 + Math.random() * 13;
+    d.rumbo = Math.random() * Math.PI * 2;
+  }
+  const rumbo = d.rumbo ?? (d.rumbo = Math.random() * Math.PI * 2);
+  const avance = (d.progreso - 0.5) * 200;      // entra y sale de la escena
+  bandada.position.set(Math.cos(rumbo) * avance, d.altura, Math.sin(rumbo) * avance);
+  bandada.rotation.y = -rumbo;
+
+  for (const p of bandada.children) {
+    const u = p.userData;
+    p.position.copy(u.offset);
+    // Aleteo: se abre y cierra la V.
+    p.scale.y = p.scale.x * (0.55 + 0.45 * Math.sin(tiempo * u.velAleteo + u.faseAleteo));
+  }
+};
+
 // Avanza la animación del cielo. dt en segundos.
 const animarCielo = (grupo: THREE.Group, tiempo: number, dt: number) => {
   const mat = grupo.userData.matEstrellas as THREE.ShaderMaterial | undefined;
@@ -282,6 +345,7 @@ export default function Presentation3D() {
   // Cielo nocturno animado (estrellas que titilan y fugaces). Vive aparte del
   // fondo estático porque necesita actualizarse en cada cuadro.
   const cieloAnimadoRef = useRef<THREE.Group | null>(null);
+  const pajarosRef = useRef<THREE.Group | null>(null);
   const ultimoCuadroRef = useRef<number>(0);
   const cameraTargetRef = useRef(new THREE.Vector3(0, 4, 0));
   const targetCameraPositionRef = useRef(new THREE.Vector3(0, 15, 30));
@@ -534,14 +598,18 @@ export default function Presentation3D() {
     ceiling.position.y = wallHeight;
     group.add(ceiling);
 
-    const wireframeGeometry = new THREE.BoxGeometry(wallWidth, wallHeight, wallWidth);
-    const wireframeMaterial = new THREE.MeshBasicMaterial({ 
-      color: parseInt(currentTheme.accent.replace('#', '0x')), 
-      wireframe: true,
+    // Sólo las 12 aristas del cubo. Con `wireframe: true` se dibujaban los
+    // triángulos de cada cara, y por eso aparecía una diagonal cruzando cada
+    // lado; EdgesGeometry deja únicamente los bordes reales.
+    const cajaAristas = new THREE.BoxGeometry(wallWidth, wallHeight, wallWidth);
+    const wireframeGeometry = new THREE.EdgesGeometry(cajaAristas);
+    cajaAristas.dispose();
+    const wireframeMaterial = new THREE.LineBasicMaterial({
+      color: parseInt(currentTheme.accent.replace('#', '0x')),
       transparent: true,
-      opacity: 0.5
+      opacity: 0.5,
     });
-    const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
+    const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
     wireframe.position.y = wallHeight / 2;
     group.add(wireframe);
 
@@ -662,6 +730,35 @@ export default function Presentation3D() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     group.add(ambientLight);
 
+    // Barra de avance para las láminas de video: una línea fina al pie de la
+    // pared. Es un pivote que se coloca sobre la pared que mira la cámara y una
+    // barra hija anclada al borde izquierdo, que crece hacia la derecha. Se
+    // actualiza en el bucle de animación; acá sólo se arma.
+    const pivoteBarra = new THREE.Group();
+    pivoteBarra.name = 'barraProgreso';
+    pivoteBarra.visible = false;
+    pivoteBarra.userData = {
+      paredes: wallMapping.map((w) => ({ pos: [...w.pos], rot: [...w.rot] })),
+      ancho: wallWidth,
+    };
+    const geoBarra = new THREE.PlaneGeometry(1, 1);
+    geoBarra.translate(0.5, 0, 0);       // origen en el extremo izquierdo
+    const barra = new THREE.Mesh(
+      geoBarra,
+      new THREE.MeshBasicMaterial({
+        color: parseInt(currentTheme.accent.replace('#', '0x')),
+        transparent: true,
+        opacity: 0.85,
+        fog: false,
+        depthTest: false,
+      })
+    );
+    barra.position.set(-wallWidth / 2, 0.07, 0);
+    barra.scale.set(0.001, 0.05, 1);
+    barra.renderOrder = 10;
+    pivoteBarra.add(barra);
+    group.add(pivoteBarra);
+
     // Cubitos de navegación: más chicos que antes (0.4) para que no tapen la
     // lámina. El contenedor se reubica en cada cuadro delante de la cámara
     // (ver el bucle de animación), así se ven mirando cualquier pared.
@@ -697,10 +794,9 @@ export default function Presentation3D() {
         baseY: 0
       };
       miniCubeGroup.add(miniCube);
-      const edgesGeometry = new THREE.EdgesGeometry(geometry);
-      const edgesMaterial = new THREE.LineBasicMaterial({ color: parseInt(currentTheme.accent.replace('#', '0x')), linewidth: 1 });
-      const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-      miniCubeGroup.add(edges);
+      // Sin aristas: iban como objeto aparte y la animación sólo gira la malla
+      // del cubo, así que quedaba una jaula de líneas quieta alrededor del cubo
+      // que giraba adentro.
       // Posición LOCAL dentro del contenedor: una fila centrada. El contenedor
       // es el que se coloca delante de la cámara en cada cuadro.
       miniCubeGroup.position.set(startX + index * miniCubeGap, 0, 0);
@@ -885,6 +981,96 @@ export default function Presentation3D() {
           g.fill();
         }
 
+        // ── Vía Láctea ── banda diagonal: resplandor, cúmulos, polvo oscuro y
+        // estrellas apretadas. Dibujada y no fotográfica: una foto de fondo
+        // pesaría más que todo el resto junto y habría que resolver su licencia.
+        g.save();
+        g.translate(1024, 430);
+        g.rotate(-0.32);
+        const banda = g.createLinearGradient(0, -200, 0, 200);
+        banda.addColorStop(0, 'rgba(180,200,255,0)');
+        banda.addColorStop(0.42, 'rgba(200,210,255,0.10)');
+        banda.addColorStop(0.5, 'rgba(230,226,255,0.17)');
+        banda.addColorStop(0.58, 'rgba(200,210,255,0.10)');
+        banda.addColorStop(1, 'rgba(180,200,255,0)');
+        g.fillStyle = banda;
+        g.fillRect(-1500, -200, 3000, 400);
+
+        for (let i = 0; i < 130; i++) {          // cúmulos luminosos
+          const x = (Math.random() - 0.5) * 2700;
+          const y = (Math.random() - 0.5) * 200;
+          const r = 40 + Math.random() * 110;
+          const cum = g.createRadialGradient(x, y, 0, x, y, r);
+          cum.addColorStop(0, 'rgba(238,232,255,0.10)');
+          cum.addColorStop(1, 'rgba(238,232,255,0)');
+          g.fillStyle = cum;
+          g.beginPath();
+          g.arc(x, y, r, 0, Math.PI * 2);
+          g.fill();
+        }
+        for (let i = 0; i < 45; i++) {           // vetas de polvo
+          const x = (Math.random() - 0.5) * 2600;
+          const y = (Math.random() - 0.5) * 150;
+          const r = 30 + Math.random() * 95;
+          const polvo = g.createRadialGradient(x, y, 0, x, y, r);
+          polvo.addColorStop(0, 'rgba(6,8,20,0.38)');
+          polvo.addColorStop(1, 'rgba(6,8,20,0)');
+          g.fillStyle = polvo;
+          g.beginPath();
+          g.arc(x, y, r, 0, Math.PI * 2);
+          g.fill();
+        }
+        for (let i = 0; i < 2200; i++) {         // estrellas de la banda
+          const x = (Math.random() - 0.5) * 2800;
+          const y = (Math.random() + Math.random() + Math.random() - 1.5) * 110;
+          g.globalAlpha = 0.18 + Math.random() * 0.5;
+          g.fillStyle = Math.random() > 0.85 ? '#ffe9c8' : '#ffffff';
+          g.beginPath();
+          g.arc(x, y, Math.random() * 0.9 + 0.15, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.globalAlpha = 1;
+        g.restore();
+
+        // ── Galaxia lejana ── halo, disco elíptico inclinado y dos brazos.
+        const gx = 520;
+        const gy = 235;
+        const halo = g.createRadialGradient(gx, gy, 0, gx, gy, 155);
+        halo.addColorStop(0, 'rgba(255,240,220,0.50)');
+        halo.addColorStop(0.18, 'rgba(215,200,255,0.18)');
+        halo.addColorStop(1, 'rgba(160,150,255,0)');
+        g.fillStyle = halo;
+        g.beginPath();
+        g.arc(gx, gy, 155, 0, Math.PI * 2);
+        g.fill();
+
+        g.save();
+        g.translate(gx, gy);
+        g.rotate(-0.5);
+        g.scale(1, 0.38);                        // inclinación del disco
+        const disco = g.createRadialGradient(0, 0, 0, 0, 0, 108);
+        disco.addColorStop(0, 'rgba(255,246,226,0.85)');
+        disco.addColorStop(0.22, 'rgba(234,224,255,0.32)');
+        disco.addColorStop(1, 'rgba(180,170,255,0)');
+        g.fillStyle = disco;
+        g.beginPath();
+        g.arc(0, 0, 108, 0, Math.PI * 2);
+        g.fill();
+        g.lineWidth = 9;
+        for (let brazo = 0; brazo < 2; brazo++) {
+          g.strokeStyle = 'rgba(226,220,255,0.13)';
+          g.beginPath();
+          for (let t = 0; t < 3.1; t += 0.06) {
+            const rad = 16 + t * 30;
+            const ang = t * 1.5 + brazo * Math.PI;
+            const px = Math.cos(ang) * rad;
+            const py = Math.sin(ang) * rad;
+            if (t === 0) g.moveTo(px, py); else g.lineTo(px, py);
+          }
+          g.stroke();
+        }
+        g.restore();
+
         for (let i = 0; i < 1500; i++) {
           const x = Math.random() * 2048;
           // Se concentran arriba: cerca del horizonte casi no se ven.
@@ -982,6 +1168,18 @@ export default function Presentation3D() {
       scene.add(animado);
     }
 
+    // De día, una bandada cruzando el cielo cada tanto.
+    if (pajarosRef.current) {
+      scene.remove(pajarosRef.current);
+      liberarGrupo(pajarosRef.current);
+      pajarosRef.current = null;
+    }
+    if (!isDarkMode) {
+      const bandada = crearPajaros();
+      pajarosRef.current = bandada;
+      scene.add(bandada);
+    }
+
     // Update grid color and opacity
     const existingGrid = scene.getObjectByName('gridHelper');
     if (existingGrid) {
@@ -1062,6 +1260,7 @@ export default function Presentation3D() {
       const dt = Math.min((ahora - (ultimoCuadroRef.current || ahora)) / 1000, 0.1);
       ultimoCuadroRef.current = ahora;
       if (cieloAnimadoRef.current) animarCielo(cieloAnimadoRef.current, ahora * 0.001, dt);
+      if (pajarosRef.current) animarPajaros(pajarosRef.current, ahora * 0.001, dt);
 
       const camera = cameraRef.current;
 
@@ -1100,6 +1299,26 @@ export default function Presentation3D() {
             insideBoxGroupRef.current.worldToLocal(destino);
             contenedorCubitos.position.copy(destino);
             contenedorCubitos.quaternion.copy(camara.quaternion);
+          }
+
+          // Avance del video de la lámina actual, al pie de la pared que se mira.
+          const pivote = insideBoxGroupRef.current.getObjectByName('barraProgreso');
+          if (pivote) {
+            const sala = boxes[currentBoxIndex];
+            const url = sala?.slides[currentSlideIndex]?.imageUrl || '';
+            const video = videosDeTexturas.find((v) => v.url === url)?.el;
+            if (video && video.duration > 0 && currentSlideIndex < (sala?.slides.length ?? 0)) {
+              const pared = pivote.userData.paredes[currentSlideIndex % 4];
+              // Un pelín hacia adentro de la sala para no pelearse con la pared.
+              pivote.position.set(pared.pos[0] * 0.985, 0, pared.pos[2] * 0.985);
+              pivote.rotation.set(pared.rot[0], pared.rot[1], pared.rot[2]);
+              const avance = Math.min(1, Math.max(0, video.currentTime / video.duration));
+              const barraMesh = pivote.children[0] as THREE.Mesh;
+              barraMesh.scale.x = Math.max(0.001, pivote.userData.ancho * avance);
+              pivote.visible = true;
+            } else {
+              pivote.visible = false;
+            }
           }
 
           insideBoxGroupRef.current.traverse((child) => {
@@ -2519,6 +2738,23 @@ export default function Presentation3D() {
         </div>
       )}
 
+
+      {/* Firma: el logo gira en 3D y al lado va la autoría. */}
+      {showAllUI && (
+        <div className="absolute bottom-7 right-4 z-50 pointer-events-none select-none flex items-center gap-2">
+          <span style={{ perspective: '140px', display: 'inline-block', lineHeight: 0 }}>
+            <img
+              src="/zirkel/zirkel-logo.png"
+              alt="Zirkel"
+              className="logo-zirkel-3d"
+              style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }}
+            />
+          </span>
+          <span className={`text-[11px] font-semibold tracking-wide ${currentTheme.textMuted}`}>
+            Ing. Jorge Farez ®
+          </span>
+        </div>
+      )}
 
       {/* Version footer */}
       {showAllUI && (
