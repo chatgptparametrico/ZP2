@@ -166,7 +166,17 @@ export default function Presentation3D() {
   const batchInputRef = useRef<HTMLInputElement>(null);
   
   const [showControls, setShowControls] = useState(true);
-  const [showAllUI, setShowAllUI] = useState(true);
+  // La tecla H cicla por tres niveles de interfaz:
+  //   0 · todo visible (editor + navegación)
+  //   1 · sin editor: quedan los cubitos de salas, la barra de láminas y las flechas
+  //   2 · proyección limpia: sin nada encima de la lámina
+  const [nivelUI, setNivelUI] = useState(0);
+  const showAllUI = nivelUI === 0;          // el editor y sus paneles
+  const mostrarNavegacion = nivelUI < 2;    // cubitos, barra inferior y flechas
+  // El bucle de animación no se rearma al cambiar de nivel (sus deps son otras),
+  // así que leería un valor viejo: se le pasa por ref.
+  const mostrarNavegacionRef = useRef(true);
+  useEffect(() => { mostrarNavegacionRef.current = mostrarNavegacion; }, [mostrarNavegacion]);
   const [isDarkMode, setIsDarkMode] = useState(true); // Theme toggle
 
   // Modals state
@@ -307,17 +317,25 @@ export default function Presentation3D() {
       group.add(outerMesh);
       
       const innerGeometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
+      // Esta es la cara interior del cubo vista DESDE AFUERA: hay que espejarla
+      // para que se lea bien. Se invierte la UV de ESTA geometría y no la
+      // textura: las texturas se comparten entre mallas (cache por archivo), así
+      // que tocarle repeat/offset espejaba también las paredes de adentro.
+      const uvInterior = innerGeometry.attributes.uv;
+      for (let i = 0; i < uvInterior.count; i++) {
+        uvInterior.setX(i, 1 - uvInterior.getX(i));
+      }
+      uvInterior.needsUpdate = true;
+
       const innerMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         side: THREE.FrontSide,
         toneMapped: false,
       });
-      
+
       loadMediaAsTexture(imageUrl, (texture) => {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.toneMapped = false;
-        texture.repeat.x = -1;
-        texture.offset.x = 1;
         innerMaterial.map = texture;
         innerMaterial.needsUpdate = true;
       });
@@ -513,8 +531,11 @@ export default function Presentation3D() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     group.add(ambientLight);
 
-    const miniCubeSize = 0.4;
-    const miniCubeGap = 1.0;
+    // Cubitos de navegación: más chicos que antes (0.4) para que no tapen la
+    // lámina. El contenedor se reubica en cada cuadro delante de la cámara
+    // (ver el bucle de animación), así se ven mirando cualquier pared.
+    const miniCubeSize = 0.26;
+    const miniCubeGap = 0.62;
     const totalWidth = boxes.length * miniCubeGap;
     const startX = -totalWidth / 2 + miniCubeGap / 2;
 
@@ -539,14 +560,19 @@ export default function Presentation3D() {
         targetBoxIndex: index,
         boxId: box.id,
         rotationSpeed: 0.015 + Math.random() * 0.01,
-        floatOffset: Math.random() * Math.PI * 2
+        floatOffset: Math.random() * Math.PI * 2,
+        // Altura de reposo del flotado. Antes se sumaba el seno a la posición
+        // actual en cada cuadro, así que en vez de oscilar la iba corriendo.
+        baseY: 0
       };
       miniCubeGroup.add(miniCube);
       const edgesGeometry = new THREE.EdgesGeometry(geometry);
       const edgesMaterial = new THREE.LineBasicMaterial({ color: parseInt(currentTheme.accent.replace('#', '0x')), linewidth: 1 });
       const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
       miniCubeGroup.add(edges);
-      miniCubeGroup.position.set(startX + index * miniCubeGap, wallHeight / 2 + 1.8, 3);
+      // Posición LOCAL dentro del contenedor: una fila centrada. El contenedor
+      // es el que se coloca delante de la cámara en cada cuadro.
+      miniCubeGroup.position.set(startX + index * miniCubeGap, 0, 0);
       miniCubesContainer.add(miniCubeGroup);
     });
     group.add(miniCubesContainer);
@@ -791,15 +817,43 @@ export default function Presentation3D() {
         // Animate mini navigation cubes inside the box
         if (insideBoxGroupRef.current) {
           const time = Date.now() * 0.001;
+
+          // El menú de cubitos acompaña a la cámara: antes vivía en un punto fijo
+          // de la sala (z=3) y al girar hacia otra pared quedaba a la espalda.
+          // Se lo recoloca en cada cuadro delante de la vista, abajo, para que
+          // esté siempre a mano sin tapar la lámina.
+          const contenedorCubitos = insideBoxGroupRef.current.getObjectByName('miniCubesContainer');
+          if (contenedorCubitos && cameraRef.current) {
+            // En el nivel 2 (proyección limpia) los cubitos también desaparecen.
+            contenedorCubitos.visible = mostrarNavegacionRef.current;
+            const camara = cameraRef.current;
+            // Offset en el espacio de la cámara (mira hacia -Z): centrados y
+            // ARRIBA. Al ir pegados a la cámara no giran con el carrusel: quedan
+            // flotando siempre en el mismo lugar de la pantalla, como la barra
+            // de láminas de abajo.
+            // y=1.65: cerca del borde superior del encuadre (a 2.8 de distancia y
+            // con el FOV por defecto, la mitad visible es ~2.1), para no tapar la
+            // lámina que va en el centro.
+            const destino = new THREE.Vector3(0, 1.65, -2.8).applyMatrix4(camara.matrixWorld);
+            // El grupo de la sala está en el origen, pero por si acaso se pasa
+            // de coordenadas del mundo a las locales del contenedor.
+            insideBoxGroupRef.current.worldToLocal(destino);
+            contenedorCubitos.position.copy(destino);
+            contenedorCubitos.quaternion.copy(camara.quaternion);
+          }
+
           insideBoxGroupRef.current.traverse((child) => {
             if (child.userData && child.userData.isMiniNavCube) {
               // Rotate the cube
               child.rotation.y += child.userData.rotationSpeed || 0.01;
               child.rotation.x += (child.userData.rotationSpeed || 0.01) * 0.5;
 
-              // Float up and down
+              // Flotado: se calcula desde la altura de reposo. Sumarlo a la
+              // posición actual (como estaba) no oscilaba, iba desplazando el
+              // cubo hasta sacarlo de cuadro.
               if (child.parent && child.userData.floatOffset !== undefined) {
-                child.parent.position.y = child.parent.position.y + Math.sin(time + child.userData.floatOffset) * 0.002;
+                const base = child.userData.baseY ?? 0;
+                child.parent.position.y = base + Math.sin(time + child.userData.floatOffset) * 0.05;
               }
             }
           });
@@ -1038,7 +1092,7 @@ export default function Presentation3D() {
           break;
         case 'h':
         case 'H':
-          setShowAllUI((prev) => !prev);
+          setNivelUI((prev) => (prev + 1) % 3);
           break;
         case 'k':
         case 'K':
@@ -1191,11 +1245,14 @@ export default function Presentation3D() {
   };
 
   // Get current subtitle
+  // Si la lámina no tiene subtítulo cargado se muestra su número, así el cartel
+  // de abajo nunca queda vacío y siempre se sabe en qué lámina se está.
   const getCurrentSubtitle = () => {
     if (!boxes[currentBoxIndex]) return '';
     const numSlides = boxes[currentBoxIndex].slides.length;
     if (currentSlideIndex < numSlides) {
-      return boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle || '';
+      const propio = boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle?.trim();
+      return propio || `${currentSlideIndex + 1} / ${numSlides}`;
     } else if (currentSlideIndex === numSlides) {
       return boxes[currentBoxIndex].floorSubtitle;
     } else {
@@ -1511,7 +1568,7 @@ export default function Presentation3D() {
           </button>
           
           <button
-            onClick={() => setShowAllUI((prev) => !prev)}
+            onClick={() => setNivelUI((prev) => (prev + 1) % 3)}
             className={`${currentTheme.panelBg} backdrop-blur-md ${currentTheme.text} px-4 py-2 rounded-xl text-sm hover:opacity-80 transition border ${currentTheme.border} shadow-lg`}
           >
             👁️ Ocultar (H)
@@ -1532,7 +1589,7 @@ export default function Presentation3D() {
       )}
 
       {/* Navigation arrows when inside box */}
-      {isInsideBox && boxes[currentBoxIndex] && (
+      {isInsideBox && boxes[currentBoxIndex] && mostrarNavegacion && (
         <>
           <button
             onClick={() => {
@@ -1564,7 +1621,11 @@ export default function Presentation3D() {
 
       {/* Current subtitle display when inside box - always visible regardless of UI toggle */}
       {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-20 w-full max-w-2xl px-4 flex justify-center">
+        <div
+          /* Con el menú oculto aparece la barra de láminas pegada al borde, así
+             que el subtítulo sube para no quedar encima de ella. */
+          className={`absolute ${showAllUI ? 'bottom-4' : 'bottom-14'} left-1/2 -translate-x-1/2 pointer-events-auto z-20 w-full max-w-2xl px-4 flex justify-center`}
+        >
           <div className="text-center relative group">
             {getCurrentLinkUrl() ? (
               <a href={getCurrentLinkUrl()} target="_blank" rel="noopener noreferrer" className="inline-block transition-transform transform hover:scale-105" title="Ir al enlace">
@@ -1926,6 +1987,42 @@ export default function Presentation3D() {
       )}
 
       {/* Slide thumbnails when inside - 6 faces */}
+      {/* Acceso directo a cualquier lámina, SOLO con el menú de edición oculto
+          (tecla H). Miniatura y número, sin panel de fondo, para no tapar la
+          proyección: con el editor abierto ya está la grilla numerada. */}
+      {isInsideBox && boxes[currentBoxIndex] && nivelUI === 1 && (
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[94vw] overflow-x-auto">
+          <div className="flex gap-1.5 px-2 py-1">
+            {boxes[currentBoxIndex].slides.map((slide, i) => (
+              <button
+                key={slide.id}
+                type="button"
+                onClick={() => setCurrentSlide(i)}
+                title={`Ir a la lámina ${i + 1}`}
+                className={`relative w-12 h-8 shrink-0 rounded overflow-hidden transition-all ${
+                  i === currentSlideIndex
+                    ? 'ring-2 ring-[var(--theme-accent)] scale-110'
+                    : 'opacity-40 hover:opacity-90'
+                }`}
+                style={{ '--theme-accent': currentTheme.accent } as React.CSSProperties}
+              >
+                <MediaPreview
+                  src={slide.imageUrl || '/zirkel/zirkel-logo.png'}
+                  alt={`Lámina ${i + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <span
+                  className="absolute inset-x-0 bottom-0 text-[10px] font-bold leading-tight text-white text-center"
+                  style={{ textShadow: '0 1px 3px rgba(0,0,0,1), 0 0 2px rgba(0,0,0,1)' }}
+                >
+                  {i + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {isInsideBox && boxes[currentBoxIndex] && showAllUI && (
         <div className="absolute top-36 right-4 z-10 pointer-events-auto">
           <div className={`${currentTheme.panelBg} backdrop-blur-md rounded-xl p-2 border ${currentTheme.border} shadow-lg`}>
