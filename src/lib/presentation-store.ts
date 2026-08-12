@@ -111,8 +111,17 @@ const crearSalaConMedia = (index: number, archivos: string[]): BoxData => ({
   ceilingSubtitle: '',
 });
 
+// Salas vacías: las 3 con el logo, sin contenido. Es el punto de partida para
+// armar una presentación desde cero (lo que hacía la app antes de traer el
+// material). Lo usa el botón "Reiniciar → Vacía".
+export const crearSalasVacias = (): BoxData[] => [
+  createDefaultBox(0),
+  createDefaultBox(1),
+  createDefaultBox(2),
+];
+
 // Reparte los archivos en partes lo más parejas posible (43 en 3 salas = 15/14/14).
-const crearSalasIniciales = (): BoxData[] => {
+export const crearSalasIniciales = (): BoxData[] => {
   const total = MEDIA_PRESENTACION.length;
   const salas: BoxData[] = [];
   let desde = 0;

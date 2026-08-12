@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { usePresentationStore } from '@/lib/presentation-store';
+import { usePresentationStore, crearSalasIniciales, crearSalasVacias } from '@/lib/presentation-store';
 
 const loadMediaAsTexture = (url: string, onLoad: (texture: THREE.Texture) => void) => {
   if (!url) return;
@@ -1018,6 +1018,25 @@ export default function Presentation3D() {
     reader.readAsDataURL(file);
   };
 
+  // Reinicia el contenido de las salas. "presentacion" vuelve a cargar el
+  // material de public/presentacion; "vacia" deja las 3 salas con el logo, para
+  // armar una desde cero. Tambien se borra la copia de localStorage que el visor
+  // recarga al abrir: sin eso, al refrescar volvia lo anterior y el boton
+  // parecia no haber hecho nada.
+  const reiniciarContenido = (modo: 'presentacion' | 'vacia') => {
+    loadPresentation({
+      boxes: modo === 'vacia' ? crearSalasVacias() : crearSalasIniciales(),
+      version: Date.now(),
+    });
+    try {
+      localStorage.removeItem('zirkel_latest_presentation');
+    } catch (e) {
+      console.warn('No se pudo limpiar localStorage', e);
+    }
+    setCurrentBox(0);
+    setCurrentSlide(0);
+  };
+
   const handleExport = () => {
     const data = getExportData();
     try {
@@ -1577,6 +1596,26 @@ export default function Presentation3D() {
               className="bg-gradient-to-r from-fuchsia-600 to-purple-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-fuchsia-500 hover:to-purple-400 transition shadow"
             >
               ☁️ Cargar
+            </button>
+          </div>
+
+          {/* REINICIAR: volver al material de la catedra o dejar las salas
+              vacias para armar una presentacion desde cero. */}
+          <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
+            <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Reiniciar</span>
+            <button
+              onClick={() => reiniciarContenido('presentacion')}
+              title="Vuelve a cargar la presentación que viene con la app"
+              className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-emerald-500 hover:to-teal-400 transition shadow"
+            >
+              📽️ Presentación
+            </button>
+            <button
+              onClick={() => reiniciarContenido('vacia')}
+              title="Deja las 3 salas vacías para armar una presentación desde cero"
+              className="bg-gradient-to-r from-slate-600 to-gray-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-slate-500 hover:to-gray-400 transition shadow"
+            >
+              🧹 Vacía
             </button>
           </div>
         </div>
