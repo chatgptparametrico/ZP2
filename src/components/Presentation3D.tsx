@@ -33,7 +33,34 @@ const MediaPreview = ({ src, alt, className }: { src: string; alt?: string; clas
 };
 
 
+// A donde vuelve el boton "Volver a Zirkel": a la copia del sitio desde la que
+// se abrio la app. Entrando desde /gitnew120/ tiene que devolver ahi y no a la
+// raiz. Orden: parametro ?back= (lo agrega el sitio al abrir la app) → referrer
+// → raiz. Se acepta SOLO zirkeldep.com y el espejo: sin ese filtro el boton
+// seria un redirector abierto (cualquiera podria pasar ?back=sitio-ajeno).
+function resolverUrlDeVuelta(): string {
+  const PORDEFECTO = 'https://zirkeldep.com';
+  const admitida = (valor: string | null): string | null => {
+    if (!valor) return null;
+    try {
+      const url = new URL(valor);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+      const host = url.hostname.toLowerCase();
+      const propio = /(^|\.)zirkeldep\.com$/.test(host) || host === 'zirkeldep-zmc.vercel.app';
+      return propio ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  };
+  const back = new URLSearchParams(window.location.search).get('back');
+  return admitida(back) || admitida(document.referrer) || PORDEFECTO;
+}
+
 export default function Presentation3D() {
+  // Se resuelve despues del montaje: en el prerender de Next no hay window y
+  // calcularlo en el render daria un HTML distinto al del cliente (hidratacion).
+  const [urlVolver, setUrlVolver] = useState('https://zirkeldep.com');
+  useEffect(() => { setUrlVolver(resolverUrlDeVuelta()); }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -839,7 +866,20 @@ export default function Presentation3D() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Si se está escribiendo (título, subtítulo, nombre de sala), los atajos no
+      // deben dispararse: sin esto, tipear "w", "z" o un número movía la cámara.
+      const destino = e.target as HTMLElement | null;
+      if (destino && (
+        destino.tagName === 'INPUT' ||
+        destino.tagName === 'TEXTAREA' ||
+        destino.isContentEditable
+      )) return;
+
       switch (e.key) {
+        // Pasar de diapositiva: ↑/← anterior, ↓/→ siguiente (convención de
+        // presentador: abajo avanza). Adentro del cubo cambia de cara; afuera,
+        // de sala. La altura de la cámara pasó a W/S.
+        case 'ArrowUp':
         case 'ArrowLeft':
           if (isInsideBox) {
             const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
@@ -851,6 +891,7 @@ export default function Presentation3D() {
             focusOnBox(newBoxIndex);
           }
           break;
+        case 'ArrowDown':
         case 'ArrowRight':
           if (isInsideBox) {
             const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length + 2 : 6;
@@ -862,12 +903,15 @@ export default function Presentation3D() {
             focusOnBox(newBoxIndex);
           }
           break;
-        case 'ArrowUp':
+        // Altura de la cámara adentro del cubo (antes estaba en ↑↓).
+        case 'w':
+        case 'W':
           if (isInsideBox) {
             targetCameraPositionRef.current.y = Math.min(5, targetCameraPositionRef.current.y + 0.5);
           }
           break;
-        case 'ArrowDown':
+        case 's':
+        case 'S':
           if (isInsideBox) {
             targetCameraPositionRef.current.y = Math.max(0.5, targetCameraPositionRef.current.y - 0.5);
           }
@@ -1265,7 +1309,9 @@ export default function Presentation3D() {
                 <ul className={`space-y-1 text-xs ${currentTheme.textMuted}`}>
                   <li className="flex items-center gap-2">🖱️ Arrastrar: Rotar/Mover</li>
                   <li className="flex items-center gap-2">🔄 Rueda: Zoom</li>
+                  <li className="flex items-center gap-2">⬆️⬇️ Cambiar cara</li>
                   <li className="flex items-center gap-2">⬅️➡️ Cambiar cara</li>
+                  <li className="flex items-center gap-2">W / S: Altura de cámara</li>
                   <li className="flex items-center gap-2">⏎ Enter: Entrar</li>
                   <li className="flex items-center gap-2">⎋ Esc: Salir</li>
                   <li className="flex items-center gap-2">1-6 Ir a cara</li>
@@ -1305,6 +1351,16 @@ export default function Presentation3D() {
                 >
                   🖱️ Mouse: {mouseEnabled ? 'ON' : 'OFF'}
                 </button>
+
+                {/* Vuelta al sitio: esta app se abre desde zirkeldep.com y sin
+                    esto el único regreso era el botón del navegador. */}
+                <a
+                  href={urlVolver}
+                  title="Volver al sitio de Zirkel"
+                  className={`${currentTheme.panelBg} backdrop-blur-md ${currentTheme.text} px-4 py-2 rounded-xl text-sm hover:opacity-80 transition border ${currentTheme.border} shadow-lg text-center no-underline`}
+                >
+                  ↩ Volver a Zirkel
+                </a>
               </>
             )}
           </div>
