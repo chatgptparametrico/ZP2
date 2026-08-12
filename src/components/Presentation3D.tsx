@@ -1227,6 +1227,17 @@ export default function Presentation3D() {
     setCurrentSlide(indice + 1);
   };
 
+  // Borra una lámina concreta (la que se soltó en la papelera) y deja el cursor
+  // en un índice válido. La sala no puede quedar sin láminas: el store ignora el
+  // borrado si es la última, así que acá también se corta antes.
+  const eliminarLamina = (indice: number) => {
+    const cantidad = boxes[currentBoxIndex]?.slides.length ?? 0;
+    if (cantidad <= 1 || indice < 0 || indice >= cantidad) return;
+    removeSlideAt(currentBoxIndex, indice);
+    const siguiente = currentSlideIndex > indice ? currentSlideIndex - 1 : currentSlideIndex;
+    setCurrentSlide(Math.max(0, Math.min(siguiente, cantidad - 2)));
+  };
+
   // Props comunes de arrastre para los cuadraditos y las miniaturas. El origen
   // viaja en el dataTransfer y no en el estado: el estado de React puede no
   // haberse actualizado todavía cuando llega el drop, y ahí el reordenamiento se
@@ -1952,8 +1963,20 @@ export default function Presentation3D() {
                     setCurrentSlide(0);
                   }
                 }}
-                className="w-10 h-10 rounded-xl font-bold transition text-sm bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/40"
-                title="Borrar todas las imágenes de la sala"
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const crudo = e.dataTransfer.getData('text/plain');
+                  if (crudo !== '') eliminarLamina(Number(crudo));
+                  else if (laminaArrastrada !== null) eliminarLamina(laminaArrastrada);
+                  setLaminaArrastrada(null);
+                }}
+                className={`w-10 h-10 rounded-xl font-bold transition text-sm border ${
+                  laminaArrastrada !== null
+                    ? 'bg-red-600/70 text-white border-red-300 scale-110 ring-2 ring-red-300'
+                    : 'bg-orange-500/20 text-orange-400 border-orange-500/50 hover:bg-orange-500/40'
+                }`}
+                title="Clic: borrar todas las imágenes de la sala · Arrastrá una lámina acá para borrar sólo esa"
               >🗑️</button>
             </div>
 
