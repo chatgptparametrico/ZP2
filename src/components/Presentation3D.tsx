@@ -2662,8 +2662,9 @@ export default function Presentation3D() {
       )}
 
 
-      {/* Firma: el logo gira en 3D y al lado va la autoría. */}
-      {showAllUI && (
+      {/* Firma: el logo gira en 3D y al lado va la autoría. Se mantiene también
+          con el menú oculto; sólo desaparece en el nivel de proyección limpia. */}
+      {mostrarNavegacion && (
         <div className="absolute bottom-7 right-4 z-50 pointer-events-none select-none flex items-center gap-2">
           <span style={{ perspective: '140px', display: 'inline-block', lineHeight: 0 }}>
             <img
