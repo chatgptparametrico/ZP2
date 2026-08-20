@@ -10,23 +10,37 @@ export const HORAS_VALIDEZ = 12;
 const PANEL = process.env.ZIRKEL_GATE_API || 'https://zirkeldep.com/api_simulator_states.php';
 const SECRETO = process.env.ZIRKEL_GATE_SECRET || 'zirkel-porton-2026';
 
-type Estado = { activo: boolean; version: string };
+// `desdePanel` dice si la version que traemos es la de verdad o un relleno
+// porque el panel no contesto. Es la diferencia entre caducar sesiones a
+// proposito y echar a alguien por un hipo de red.
+type Estado = { activo: boolean; version: string; desdePanel: boolean };
 let cache: { estado: Estado; hasta: number } | null = null;
+let ultimoBueno: Estado | null = null;
 
 /** ¿Hay que exigir acceso? Se administra desde el panel de zirkeldep. */
 export async function estadoPorton(): Promise<Estado> {
   if (cache && cache.hasta > Date.now()) return cache.estado;
-  let estado: Estado = { activo: true, version: 'local' };
   try {
     const r = await fetch(`${PANEL}?action=gate_estado`, { cache: 'no-store' });
     const d = await r.json();
     if (typeof d?.activo === 'boolean') {
-      estado = { activo: d.activo, version: String(d.version || 'sin-version') };
+      const estado: Estado = {
+        activo: d.activo,
+        version: String(d.version || 'sin-version'),
+        desdePanel: true,
+      };
+      ultimoBueno = estado;
+      cache = { estado, hasta: Date.now() + 60_000 };
+      return estado;
     }
   } catch {
-    /* sin respuesta: se asume activo, que es el lado prudente */
+    /* sin respuesta: se resuelve abajo */
   }
-  cache = { estado, hasta: Date.now() + 60_000 };
+  // El panel no contesto. Se conserva lo ultimo que si supimos; si nunca
+  // supimos nada, se exige acceso igual (lado prudente) pero SIN afirmar una
+  // version, para no invalidar cookies legitimas. Se reintenta antes.
+  const estado: Estado = ultimoBueno ?? { activo: true, version: 'sin-panel', desdePanel: false };
+  cache = { estado, hasta: Date.now() + 15_000 };
   return estado;
 }
 
@@ -80,9 +94,12 @@ export async function tokenValido(token: string | undefined): Promise<boolean> {
   const [vence, version] = cuerpo.split('~');
   if (!/^\d+$/.test(vence || '') || Number(vence) < Date.now()) return false;
 
-  // Si en el panel cambiaron la configuración, este token quedó viejo.
+  // Si en el panel cambiaron la configuración, este token quedó viejo. Pero
+  // esto solo se exige cuando la version viene del panel de verdad: si el
+  // panel no contesto, invalidar la cookie echaria de la app a quien esta
+  // adentro —en plena presentacion— por una caida ajena.
   const actual = await estadoPorton();
-  if (version !== actual.version) return false;
+  if (actual.desdePanel && version !== actual.version) return false;
 
   const esperada = await firmar(cuerpo);
   if (firma.length !== esperada.length) return false;
