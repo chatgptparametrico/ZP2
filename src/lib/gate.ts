@@ -5,7 +5,7 @@
 // zirkeldep —que es quien sabe quién es admin— y se deja una cookie propia.
 // Cualquiera que llegue sin ticket ve la pantalla de acceso restringido.
 export const COOKIE_PORTON = 'zirkel_gate';
-export const HORAS_VALIDEZ = 12;
+export const HORAS_VALIDEZ = 48;
 
 const PANEL = process.env.ZIRKEL_GATE_API || 'https://zirkeldep.com/api_simulator_states.php';
 const SECRETO = process.env.ZIRKEL_GATE_SECRET || 'zirkel-porton-2026';
