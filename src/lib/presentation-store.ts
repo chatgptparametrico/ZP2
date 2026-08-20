@@ -64,6 +64,14 @@ const defaultImages: string[] = [
 
 const defaultSlides: string[] = defaultImages;
 
+// Piso y techo de la sala (generados con scripts/generar_piso_techo.py):
+// el piso lleva el logo repetido en los cuatro bordes, girado 0/90/180/270, para
+// que se lea derecho desde la pared que estés mirando al girar el carrusel, sobre
+// un transportador de anillos concéntricos. El techo es una lucarna octogonal con
+// cielo procedural, y la losa alrededor recibe el derrame de luz de la abertura.
+const PISO_SALA = '/zirkel/piso-zirkel.jpg';
+const TECHO_SALA = '/zirkel/techo-lucarna.jpg';
+
 const createDefaultBox = (index: number): BoxData => ({
   id: `box-${Date.now()}-${index}`,
   name: `Presentación ${index + 1}`,
@@ -73,66 +81,69 @@ const createDefaultBox = (index: number): BoxData => ({
     { id: `slide-${Date.now()}-2`, imageUrl: defaultSlides[(index + 2) % 6], subtitle: 'Programación Visual Grasshopper' },
     { id: `slide-${Date.now()}-3`, imageUrl: defaultSlides[(index + 3) % 6], subtitle: 'Optimización Topológica' },
   ],
-  floorImageUrl: '/images/slides/slide5.png',
-  ceilingImageUrl: '/images/slides/slide6.png',
-  floorSubtitle: 'Estructura Base',
-  ceilingSubtitle: 'Sistema de Cubierta',
+  floorImageUrl: PISO_SALA,
+  ceilingImageUrl: TECHO_SALA,
+  floorSubtitle: '',
+  ceilingSubtitle: '',
 });
 
-// ── Contenido por defecto de la presentación ────────────────────────────────
-// Los archivos viven en public/presentacion, ya optimizados para proyector
-// (imágenes y videos a 1280x720). El orden es el de los números del original.
-// Todo va en las PAREDES: piso y techo quedan con el logo, sin contenido, para
-// que no haya material escondido mirando hacia arriba o hacia abajo.
-// Las salas tienen 4 paredes físicas: cuando hay más láminas que paredes, el
-// visor las va rotando a medida que se avanza con ↓, así que una sala admite
-// tantas láminas como haga falta.
-const MEDIA_PRESENTACION: string[] = [
-  '1.jpg', '2.mp4', '3.mp4', '4.mp4', '5.mp4', '6.mp4', '7.jpg', '8.mp4', '9.jpg',
-  '10.jpg', '11.mp4', '12.mp4', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg',
-  '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
-  '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg', '34.mp4', '35.mp4', '36.jpg',
-  '37.mp4', '38.mp4', '39.mp4', '40.jpg', '41.jpg', '42.jpg', '43.jpg',
-  '44.mp4', '45.mp4', '46.mp4',
+// ── Contenido por defecto de la presentación ──────────────────────────
+// Es la presentación final: la organización sale del JSON exportado desde la
+// propia app (4 salas de 19/31/44/6 diapositivas) y los archivos son esos mismos ya
+// optimizados —videos re-codificados a 1920 de ancho con audio mono; el de
+// 3240 px que pesaba 85 MB quedó en 13—. Viven en public/presentacion-rev3/s1..s4
+// numerados por orden de diapositiva: los huecos en la secuencia .jpg son videos.
+// El piso y el techo son los de siempre, iguales en las cuatro salas.
+const SALAS_PRESENTACION: string[][] = [
+  [
+    '1.jpg', '2.mp4', '3.mp4', '4.mp4', '5.mp4', '6.mp4', '7.mp4', '8.mp4', '9.mp4',
+    '10.mp4', '11.jpg', '12.jpg', '13.mp4', '14.mp4', '15.jpg', '16.jpg', '17.jpg', '18.mp4',
+    '19.mp4',
+  ],
+  [
+    '1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg', '8.jpg', '9.jpg',
+    '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg',
+    '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
+    '28.jpg', '29.jpg', '30.jpg', '31.jpg',
+  ],
+  [
+    '1.mp4', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg', '8.jpg', '9.jpg',
+    '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg',
+    '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
+    '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg', '34.jpg', '35.mp4', '36.jpg',
+    '37.jpg', '38.jpg', '39.jpg', '40.jpg', '41.jpg', '42.jpg', '43.jpg', '44.jpg',
+  ],
+  [
+    '1.mp4', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg',
+  ],
 ];
-
-const SALAS_INICIALES = 3;
 
 const crearSalaConMedia = (index: number, archivos: string[]): BoxData => ({
   id: `box-${Date.now()}-${index}`,
   name: `Presentación ${index + 1}`,
   slides: archivos.map((archivo, i) => ({
     id: `slide-${Date.now()}-${index}-${i}`,
-    imageUrl: `/presentacion/${archivo}`,
+    imageUrl: `/presentacion-rev3/s${index + 1}/${archivo}`,
     subtitle: '',
   })),
-  floorImageUrl: '/zirkel/zirkel-logo.png',
-  ceilingImageUrl: '/zirkel/zirkel-logo.png',
+  floorImageUrl: PISO_SALA,
+  ceilingImageUrl: TECHO_SALA,
   floorSubtitle: '',
   ceilingSubtitle: '',
 });
 
 // Salas vacías: las 3 con el logo, sin contenido. Es el punto de partida para
-// armar una presentación desde cero (lo que hacía la app antes de traer el
-// material). Lo usa el botón "Reiniciar → Vacía".
+// armar una presentación desde cero. Lo usa el botón "Reiniciar → Vacía".
 export const crearSalasVacias = (): BoxData[] => [
   createDefaultBox(0),
   createDefaultBox(1),
   createDefaultBox(2),
 ];
 
-// Reparte los archivos en partes lo más parejas posible (43 en 3 salas = 15/14/14).
-export const crearSalasIniciales = (): BoxData[] => {
-  const total = MEDIA_PRESENTACION.length;
-  const salas: BoxData[] = [];
-  let desde = 0;
-  for (let i = 0; i < SALAS_INICIALES; i++) {
-    const cuantas = Math.ceil((total - desde) / (SALAS_INICIALES - i));
-    salas.push(crearSalaConMedia(i, MEDIA_PRESENTACION.slice(desde, desde + cuantas)));
-    desde += cuantas;
-  }
-  return salas;
-};
+// Cada sala trae exactamente las diapositivas que le tocan: acá no se reparte
+// nada, el agrupamiento ya viene decidido desde la app.
+export const crearSalasIniciales = (): BoxData[] =>
+  SALAS_PRESENTACION.map((archivos, i) => crearSalaConMedia(i, archivos));
 
 export const usePresentationStore = create<PresentationState>((set, get) => ({
   // Arranca con la presentación cargada: 3 salas con todo el material en las
