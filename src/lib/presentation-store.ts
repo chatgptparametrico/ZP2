@@ -89,7 +89,7 @@ const createDefaultBox = (index: number): BoxData => ({
 
 // ── Contenido por defecto de la presentación ──────────────────────────
 // Es la presentación final: la organización sale del JSON exportado desde la
-// propia app (4 salas de 19/31/45/6 diapositivas) y los archivos son esos mismos ya
+// propia app (4 salas de 19/31/44/6 diapositivas) y los archivos son esos mismos ya
 // optimizados —videos re-codificados a 1920 de ancho con audio mono; el de
 // 3240 px que pesaba 85 MB quedó en 13—. Viven en public/presentacion-rev3/s1..s4
 // numerados por orden de diapositiva: los huecos en la secuencia .jpg son videos.
@@ -111,7 +111,7 @@ const SALAS_PRESENTACION: string[][] = [
     '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg',
     '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg',
     '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg', '34.jpg', '35.mp4', '36.jpg',
-    '37.jpg', '38.jpg', '39.jpg', '40.jpg', '41.jpg', '42.jpg', '43.mp4', '44.jpg', '45.jpg',
+    '37.jpg', '38.jpg', '39.jpg', '40.jpg', '41.jpg', '42.mp4', '43.jpg', '44.jpg',
   ],
   [
     '1.mp4', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg',
