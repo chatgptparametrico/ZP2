@@ -20,8 +20,18 @@ const SALA_DIST = SALA_ANCHO / 2;    // 5.333
 // eso deja la lámina chica y con mucho aire alrededor. Bajarlo a ojo tampoco
 // sirve, porque recorta los costados antes de que se note.
 const MARGEN_ENCUADRE = 1.015;       // 1,5% de aire para que no roce el borde
+
+// Franja de piso y techo que se deja asomar al entrar: ubica al espectador
+// DENTRO de la sala, en vez de dejar la lamina flotando contra el negro. Es la
+// fraccion del alto de la pared que se suma arriba y abajo, asi que 0.18 deja
+// una franja de ~8% del alto de pantalla de cada lado (uno o dos centimetros en
+// un monitor comun). Antes esto no estaba: en pantallas anchas mandaba la
+// restriccion del ancho y la franja salia de rebote, distinta en cada pantalla.
+// Subir este numero muestra mas piso y techo y achica la lamina; bajarlo, al
+// reves. Es el unico valor que hay que tocar.
+const AIRE_PISO_TECHO = 0.18;
 const fovParaEncuadrar = (aspectoVista: number) => {
-  const tanAlto = (SALA_ALTO / 2) / SALA_DIST;
+  const tanAlto = ((SALA_ALTO / 2) * (1 + AIRE_PISO_TECHO)) / SALA_DIST;
   const tanAncho = (SALA_ANCHO / 2) / (SALA_DIST * Math.max(aspectoVista, 0.2));
   const tan = Math.max(tanAlto, tanAncho) * MARGEN_ENCUADRE;
   return Math.min(100, Math.max(28, (2 * Math.atan(tan) * 180) / Math.PI));
