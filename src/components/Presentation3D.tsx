@@ -4,6 +4,33 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore, crearSalasIniciales, crearSalasVacias } from '@/lib/presentation-store';
 
+// ── Encuadre de la lámina dentro de la sala ─────────────────────────────────
+// Mismas medidas que usan createBox/createInsideView: la sala es un cubo de 8 con
+// paredes de 4/3 de ancho por 2/3 de alto, y la cámara va en el centro, a la
+// altura media de la pared. Así que la distancia a cualquier pared es la mitad
+// del ancho.
+const SALA_ANCHO = 8 * (4 / 3);      // 10.667
+const SALA_ALTO = 8 * (2 / 3);       // 5.333
+const SALA_DIST = SALA_ANCHO / 2;    // 5.333
+
+// Ángulo de visión que deja la lámina lo más grande posible SIN recortarla.
+// Sale de las dos restricciones —que entre a lo alto y que entre a lo ancho— y
+// manda la más exigente, que depende de la proporción de la pantalla. Antes era
+// un 75° fijo, elegido para que entrara en un monitor 4:3: en una pantalla 16:9
+// eso deja la lámina chica y con mucho aire alrededor. Bajarlo a ojo tampoco
+// sirve, porque recorta los costados antes de que se note.
+const MARGEN_ENCUADRE = 1.015;       // 1,5% de aire para que no roce el borde
+const fovParaEncuadrar = (aspectoVista: number) => {
+  const tanAlto = (SALA_ALTO / 2) / SALA_DIST;
+  const tanAncho = (SALA_ANCHO / 2) / (SALA_DIST * Math.max(aspectoVista, 0.2));
+  const tan = Math.max(tanAlto, tanAncho) * MARGEN_ENCUADRE;
+  return Math.min(100, Math.max(28, (2 * Math.atan(tan) * 180) / Math.PI));
+};
+
+// Multiplicadores que cicla la tecla Z sobre ese encuadre: justo, más cerca
+// (recorta a propósito, para leer un detalle) y más lejos (se ve la sala).
+const ZOOMS_Z = [1, 0.72, 1.35];
+
 // ── Control de reproducción de los videos ───────────────────────────────────
 // Cada cara con video crea su propio elemento <video> para la textura. Si todos
 // se reproducen a la vez (una sala puede tener varios) el decodificado satura la
@@ -49,6 +76,26 @@ const sincronizarVideos = (activa: string, precargar: string[] = []) => {
     }
   }
 };
+
+// ── Pasador de diapositivas (presenter RF) ──────────────────────────────────
+// Un pasador barato es, para la computadora, un teclado USB más: NO manda
+// flechas. Los dos botones laterales mandan Page Up / Page Down (la convención
+// de PowerPoint) y los otros mandan F5 / Esc / Tab / "." / "b" según el modelo.
+// Por eso los atajos andaban con el teclado y no con el pasador.
+// Se comparan `e.key` y `e.code`: algunos HID genéricos no reportan bien `key`.
+const TECLAS_ANTERIOR = ['ArrowUp', 'ArrowLeft', 'PageUp', 'Backspace', 'p', 'P', 'MediaTrackPrevious'];
+const TECLAS_SIGUIENTE = ['ArrowDown', 'ArrowRight', 'PageDown', ' ', 'Space', 'Spacebar', 'n', 'N', 'MediaTrackNext', 'MediaPlayPause'];
+// El botón redondo del medio de la mayoría de los pasadores es SOLO el láser
+// (no manda ninguna tecla): los que quedan son el de arriba y el de abajo, y
+// cada uno tiene su acción. El reparto sigue lo que significan esas teclas en
+// PowerPoint: F5/Esc son "arrancar y terminar la presentación" → entrar y salir
+// de la sala; "." y "b" son "pantalla en negro" y Tab es "cambiar de ventana"
+// → sacar los menús de encima de la lámina (lo mismo que la H).
+const TECLAS_ENTRAR_SALIR = ['F5', 'Escape'];
+const TECLAS_OCULTAR_MENU = ['Tab', '.', 'Period', 'b', 'B', 'h', 'H'];
+
+const coincide = (e: KeyboardEvent, teclas: string[]) =>
+  teclas.includes(e.key) || teclas.includes(e.code);
 
 // Cielo nocturno animado: estrellas que titilan y fugaces que cruzan dejando
 // estela. Va como objetos 3D y no dibujado en el fondo, porque el fondo es una
@@ -294,6 +341,7 @@ export default function Presentation3D() {
   const targetCameraPitchRef = useRef(0);
   const fovRef = useRef(75);
   const targetFovRef = useRef(75);
+  const zoomZRef = useRef(0);          // paso del ciclo de la tecla Z
   const batchInputRef = useRef<HTMLInputElement>(null);
   
   const [showControls, setShowControls] = useState(true);
@@ -309,6 +357,15 @@ export default function Presentation3D() {
   const mostrarNavegacionRef = useRef(true);
   useEffect(() => { mostrarNavegacionRef.current = mostrarNavegacion; }, [mostrarNavegacion]);
   const [isDarkMode, setIsDarkMode] = useState(true); // Theme toggle
+
+  // Diagnóstico de teclas: abriendo la app con ?teclas=1 aparece abajo a la
+  // izquierda qué manda cada botón del pasador. Sirve para modelos raros, que
+  // no siguen la convención de Page Up / Page Down.
+  const [debugTeclas, setDebugTeclas] = useState(false);
+  const [ultimaTecla, setUltimaTecla] = useState('');
+  useEffect(() => {
+    setDebugTeclas(new URLSearchParams(window.location.search).has('teclas'));
+  }, []);
 
   // Modals state
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -769,8 +826,10 @@ export default function Presentation3D() {
     targetCameraAngleRef.current = 0;
     cameraPitchRef.current = 0;
     targetCameraPitchRef.current = 0;
-    fovRef.current = 75;
-    targetFovRef.current = 75;
+    const fovEncuadre = fovParaEncuadrar(window.innerWidth / window.innerHeight);
+    zoomZRef.current = 0;
+    fovRef.current = fovEncuadre;
+    targetFovRef.current = fovEncuadre;
 
     boxesRef.current.forEach(box => {
       box.visible = false;
@@ -867,6 +926,12 @@ export default function Presentation3D() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      // El encuadre depende de la proporción de la pantalla: al rotar el celular
+      // o cambiar de proyector hay que recalcularlo, si no la lámina se recorta.
+      if (insideBoxGroupRef.current) {
+        targetFovRef.current =
+          fovParaEncuadrar(window.innerWidth / window.innerHeight) * ZOOMS_Z[zoomZRef.current];
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -1468,34 +1533,64 @@ export default function Presentation3D() {
         destino.isContentEditable
       )) return;
 
+      // Space/Enter con un botón enfocado es "apretar ese botón", no un atajo:
+      // si no, después de tocar "Entrar" con el mouse, avanzar con el pasador
+      // volvía a dispararlo.
+      const sobreBoton = !!destino?.closest?.('button, a, [role="button"]');
+
+      // Pasar de diapositiva: ↑/← anterior, ↓/→ siguiente (convención de
+      // presentador: abajo avanza), más Page Up / Page Down del pasador.
+      // Adentro del cubo cambia de cara; afuera, de sala.
+      const mover = (paso: number) => {
+        if (isInsideBox) {
+          const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length : 4;
+          setCurrentSlide((currentSlideIndex + paso + total) % total);
+        } else {
+          const newBoxIndex = (currentBoxIndex + paso + boxes.length) % boxes.length;
+          setCurrentBox(newBoxIndex);
+          focusOnBox(newBoxIndex);
+        }
+      };
+
+      // Con un diálogo abierto, Esc lo cierra: no tiene que entrar a una sala.
+      const hayModal = showSaveModal || showLoadModal ||
+        !!document.querySelector('[role="dialog"], [role="alertdialog"]');
+
+      let accion = '(sin asignar)';
+      if (coincide(e, TECLAS_SIGUIENTE) && !(sobreBoton && e.key === ' ')) {
+        accion = 'siguiente';
+      } else if (coincide(e, TECLAS_ANTERIOR)) {
+        accion = 'anterior';
+      } else if (coincide(e, TECLAS_ENTRAR_SALIR) && !(e.key === 'Escape' && hayModal)) {
+        accion = isInsideBox ? 'salir de la sala' : 'entrar a la sala';
+      } else if (coincide(e, TECLAS_OCULTAR_MENU)) {
+        accion = 'ocultar/mostrar menús';
+      }
+      if (debugTeclas) {
+        setUltimaTecla(`key="${e.key}"  code="${e.code}"  keyCode=${e.keyCode} → ${accion}`);
+      }
+
+      if (accion === 'siguiente' || accion === 'anterior') {
+        // Page Up/Down scrollean y Backspace navega hacia atrás en el historial.
+        e.preventDefault();
+        mover(accion === 'siguiente' ? 1 : -1);
+        return;
+      }
+      if (accion === 'entrar a la sala' || accion === 'salir de la sala') {
+        // F5 recargaría la página.
+        e.preventDefault();
+        if (isInsideBox) exitBox();
+        else enterBox(currentBoxIndex);
+        return;
+      }
+      if (accion === 'ocultar/mostrar menús') {
+        // Tab movería el foco al botón siguiente.
+        e.preventDefault();
+        setNivelUI((prev) => (prev + 1) % 3);
+        return;
+      }
+
       switch (e.key) {
-        // Pasar de diapositiva: ↑/← anterior, ↓/→ siguiente (convención de
-        // presentador: abajo avanza). Adentro del cubo cambia de cara; afuera,
-        // de sala. La altura de la cámara pasó a W/S.
-        case 'ArrowUp':
-        case 'ArrowLeft':
-          if (isInsideBox) {
-            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length : 4;
-            const newSlideIndex = (currentSlideIndex - 1 + total) % total;
-            setCurrentSlide(newSlideIndex);
-          } else {
-            const newBoxIndex = (currentBoxIndex - 1 + boxes.length) % boxes.length;
-            setCurrentBox(newBoxIndex);
-            focusOnBox(newBoxIndex);
-          }
-          break;
-        case 'ArrowDown':
-        case 'ArrowRight':
-          if (isInsideBox) {
-            const total = boxes[currentBoxIndex]?.slides?.length ? boxes[currentBoxIndex].slides.length : 4;
-            const newSlideIndex = (currentSlideIndex + 1) % total;
-            setCurrentSlide(newSlideIndex);
-          } else {
-            const newBoxIndex = (currentBoxIndex + 1) % boxes.length;
-            setCurrentBox(newBoxIndex);
-            focusOnBox(newBoxIndex);
-          }
-          break;
         // Altura de la cámara adentro del cubo (antes estaba en ↑↓).
         case 'w':
         case 'W':
@@ -1510,19 +1605,9 @@ export default function Presentation3D() {
           }
           break;
         case 'Enter':
-          if (!isInsideBox) {
+          if (!isInsideBox && !sobreBoton) {
             enterBox(currentBoxIndex);
           }
-          break;
-        case 'Escape':
-        case 'Backspace':
-          if (isInsideBox) {
-            exitBox();
-          }
-          break;
-        case 'h':
-        case 'H':
-          setNivelUI((prev) => (prev + 1) % 3);
           break;
         case 'k':
         case 'K':
@@ -1537,13 +1622,11 @@ export default function Presentation3D() {
         case 'z':
         case 'Z':
           if (isInsideBox) {
-            if (targetFovRef.current > 70) {
-              targetFovRef.current = 50;
-            } else if (targetFovRef.current > 40) {
-              targetFovRef.current = 35;
-            } else {
-              targetFovRef.current = 75;
-            }
+            // Ciclo sobre el encuadre calculado, no sobre valores fijos: así el
+            // primer paso siempre vuelve a dejar la lámina justa en pantalla.
+            zoomZRef.current = (zoomZRef.current + 1) % ZOOMS_Z.length;
+            targetFovRef.current =
+              fovParaEncuadrar(window.innerWidth / window.innerHeight) * ZOOMS_Z[zoomZRef.current];
           }
           break;
         case '1':
@@ -1561,7 +1644,7 @@ export default function Presentation3D() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isInsideBox, currentBoxIndex, currentSlideIndex, boxes.length, setCurrentBox, setCurrentSlide, focusOnBox, enterBox, exitBox]);
+  }, [isInsideBox, currentBoxIndex, currentSlideIndex, boxes, boxes.length, debugTeclas, showSaveModal, showLoadModal, setCurrentBox, setCurrentSlide, focusOnBox, enterBox, exitBox]);
 
   const handleBatchUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1984,13 +2067,17 @@ export default function Presentation3D() {
                 <ul className={`space-y-1 text-xs ${currentTheme.textMuted}`}>
                   <li className="flex items-center gap-2">🖱️ Arrastrar: Rotar/Mover</li>
                   <li className="flex items-center gap-2">🔄 Rueda: Zoom</li>
-                  <li className="flex items-center gap-2">⬆️⬇️ Cambiar cara</li>
-                  <li className="flex items-center gap-2">⬅️➡️ Cambiar cara</li>
+                  <li className="flex items-center gap-2">⬆️⬇️ ⬅️➡️ Cambiar cara</li>
                   <li className="flex items-center gap-2">W / S: Altura de cámara</li>
                   <li className="flex items-center gap-2">⏎ Enter: Entrar</li>
-                  <li className="flex items-center gap-2">⎋ Esc: Salir</li>
+                  <li className="flex items-center gap-2">⎋ Esc: Entrar / Salir</li>
                   <li className="flex items-center gap-2">1-6 Ir a cara</li>
                   <li className="flex items-center gap-2">k Ocultar menú</li>
+                  <li className="flex items-center gap-2 pt-1 border-t border-white/10 mt-1">
+                    📽️ Pasador: ◀ ▶ cambian de cara
+                  </li>
+                  <li className="flex items-center gap-2">Un botón entra y sale de la sala</li>
+                  <li className="flex items-center gap-2">El otro oculta los menús (= H)</li>
                 </ul>
               </div>
             )}
@@ -2837,6 +2924,15 @@ export default function Presentation3D() {
               <button onClick={() => setShowLoadModal(false)} className={`px-4 py-2 rounded-xl text-sm ${currentTheme.text} hover:opacity-70 transition`}>Cerrar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Diagnóstico del pasador: se activa con ?teclas=1 en la URL. Apretando
+          cada botón del control se ve qué tecla manda y qué hace la app. */}
+      {debugTeclas && (
+        <div className="absolute bottom-4 left-4 z-50 pointer-events-none rounded-lg bg-black/80 px-3 py-2 font-mono text-[11px] text-lime-300 shadow-lg">
+          <div className="text-white/60">Diagnóstico de teclas (?teclas=1)</div>
+          <div>{ultimaTecla || 'Apretá un botón del pasador…'}</div>
         </div>
       )}
 
