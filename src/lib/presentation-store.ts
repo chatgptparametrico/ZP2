@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { esDeLaCasa, rolActual } from './rol';
 
 export interface SlideData {
   id: string;
@@ -146,10 +147,16 @@ export const crearSalasVacias = (): BoxData[] => [
 export const crearSalasIniciales = (): BoxData[] =>
   SALAS_PRESENTACION.map((archivos, i) => crearSalaConMedia(i, archivos));
 
+// Con qué arranca la app según quién entró. El público ve las salas vacías para
+// armar la suya: el material del congreso además lo bloquea el servidor, así que
+// esto es lo que se ve, no lo que protege.
+const salasSegunRol = (): BoxData[] =>
+  esDeLaCasa(rolActual()) ? crearSalasIniciales() : crearSalasVacias();
+
 export const usePresentationStore = create<PresentationState>((set, get) => ({
   // Arranca con la presentación cargada: 3 salas con todo el material en las
   // paredes. Con "Nueva Sala" se agregan las que hagan falta.
-  boxes: crearSalasIniciales(),
+  boxes: salasSegunRol(),
   currentBoxIndex: 0,
   isInsideBox: false,
   mouseEnabled: true,

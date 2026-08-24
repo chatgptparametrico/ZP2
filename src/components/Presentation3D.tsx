@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore, crearSalasIniciales, crearSalasVacias } from '@/lib/presentation-store';
+import { esDeLaCasa, rolActual } from '@/lib/rol';
 
 // ── Encuadre de la lámina dentro de la sala ─────────────────────────────────
 // Mismas medidas que usan createBox/createInsideView: la sala es un cubo de 8 con
@@ -330,6 +331,13 @@ export default function Presentation3D() {
   // calcularlo en el render daria un HTML distinto al del cliente (hidratacion).
   const [urlVolver, setUrlVolver] = useState('https://zirkeldep.com');
   useEffect(() => { setUrlVolver(resolverUrlDeVuelta()); }, []);
+
+  // Administrador o docente habilitado. Arranca en false por la misma razon que
+  // urlVolver: en el prerender no hay cookies, y suponer que si las hay daria un
+  // HTML distinto al del cliente (hidratacion). Solo decide que botones se ven;
+  // el material del congreso lo bloquea el servidor.
+  const [deLaCasa, setDeLaCasa] = useState(false);
+  useEffect(() => { setDeLaCasa(esDeLaCasa(rolActual())); }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -2381,8 +2389,10 @@ export default function Presentation3D() {
             </label>
           </div>
 
-          {/* SERVER group */}
-          <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
+          {/* SERVER group: el almacenamiento es compartido, asi que guardar y
+              cargar ahi queda para administradores y docentes. El publico usa
+              los botones de Local, que van a su propia maquina. */}
+          <div className={`${deLaCasa ? 'flex' : 'hidden'} gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
             <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Servidor</span>
             <button
               onClick={() => { setSaveFilename(''); setShowSaveModal(true); }}
@@ -2402,13 +2412,15 @@ export default function Presentation3D() {
               vacias para armar una presentacion desde cero. */}
           <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
             <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Reiniciar</span>
-            <button
-              onClick={() => reiniciarContenido('presentacion')}
-              title="Vuelve a cargar la presentación que viene con la app"
-              className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-emerald-500 hover:to-teal-400 transition shadow"
-            >
-              📽️ Presentación
-            </button>
+            {deLaCasa && (
+              <button
+                onClick={() => reiniciarContenido('presentacion')}
+                title="Vuelve a cargar la presentación que viene con la app"
+                className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:from-emerald-500 hover:to-teal-400 transition shadow"
+              >
+                📽️ Presentación
+              </button>
+            )}
             <button
               onClick={() => reiniciarContenido('vacia')}
               title="Deja las 3 salas vacías para armar una presentación desde cero"

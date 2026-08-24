@@ -5,6 +5,7 @@
 // zirkeldep —que es quien sabe quién es admin— y se deja una cookie propia.
 // Cualquiera que llegue sin ticket ve la pantalla de acceso restringido.
 export const COOKIE_PORTON = 'zirkel_gate';
+export type Rol = 'admin' | 'docente' | 'publico';
 export const HORAS_VALIDEZ = 48;
 
 const PANEL = process.env.ZIRKEL_GATE_API || 'https://zirkeldep.com/api_simulator_states.php';
@@ -44,9 +45,14 @@ export async function estadoPorton(): Promise<Estado> {
   return estado;
 }
 
-/** Valida contra zirkeldep el ticket que llegó por la URL. */
-export async function ticketValido(ticket: string): Promise<boolean> {
-  if (!ticket) return false;
+/**
+ * Valida contra zirkeldep el ticket que llegó por la URL y devuelve con qué rol
+ * entra, o null si no vale. Los tickets de docente los revalida zirkeldep
+ * contra su padrón, así que revocar a alguien lo deja afuera en el acto aunque
+ * conserve el enlace.
+ */
+export async function rolDelTicket(ticket: string): Promise<Rol | null> {
+  if (!ticket) return null;
   try {
     const r = await fetch(`${PANEL}?action=gate_ticket_check`, {
       method: 'POST',
@@ -55,9 +61,10 @@ export async function ticketValido(ticket: string): Promise<boolean> {
       cache: 'no-store',
     });
     const d = await r.json();
-    return d?.ok === true;
+    if (d?.ok !== true) return null;
+    return d?.rol === 'docente' ? 'docente' : 'admin';
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -77,11 +84,22 @@ async function firmar(payload: string): Promise<string> {
   return aHex(await crypto.subtle.sign('HMAC', clave, new TextEncoder().encode(payload)));
 }
 
-/** Cookie opaca `vencimiento~version.firma`; el navegador no puede fabricarla. */
-export async function emitirToken(): Promise<string> {
+/**
+ * Cookie opaca `vencimiento~version~rol.firma`; el navegador no puede
+ * fabricarla. El rol va adentro y firmado: cambiarlo a mano invalida la cookie.
+ */
+export async function emitirToken(rol: Rol = 'admin'): Promise<string> {
   const { version } = await estadoPorton();
-  const cuerpo = `${Date.now() + HORAS_VALIDEZ * 3600 * 1000}~${version}`;
+  const cuerpo = `${Date.now() + HORAS_VALIDEZ * 3600 * 1000}~${version}~${rol}`;
   return `${cuerpo}.${await firmar(cuerpo)}`;
+}
+
+/** Devuelve el rol que lleva la cookie, o null si no es válida. */
+export async function rolDelToken(token: string | undefined): Promise<Rol | null> {
+  if (!(await tokenValido(token))) return null;
+  const cuerpo = (token as string).slice(0, (token as string).lastIndexOf('.'));
+  const rol = cuerpo.split('~')[2];
+  return rol === 'docente' ? 'docente' : rol === 'publico' ? 'publico' : 'admin';
 }
 
 export async function tokenValido(token: string | undefined): Promise<boolean> {
