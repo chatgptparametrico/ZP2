@@ -24,7 +24,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
+# Ojo: antes solo estaba .env*.local, asi que .env quedaba versionado.
+# Este repo es publico: un secreto puesto ahi sale publicado sin que nada
+# avise. Se ignoran todos y se deja .env.example como documentacion.
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -43,3 +48,10 @@ mini-services/
 db/
 *.log
 Caddyfile
+
+# Material que no va al repositorio.
+# Son 43 MB que nadie referencia desde el codigo: una revision vieja y un
+# respaldo comprimido. En un repo publico los paga cada clon y cada deploy.
+# Siguen en el disco local; solo se los deja afuera del control de versiones.
+/public/presentacion-rev2/
+/public/*.7z

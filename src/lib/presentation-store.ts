@@ -118,15 +118,42 @@ const SALAS_PRESENTACION: string[][] = [
   [
     '1.mp4', '2.jpg', '3.jpg', '4.jpg',
   ],
+  [
+    // Sala 5 — «Diseño Paramétrico Estructural». Es la única con subtítulos
+    // escritos; los de las otras cuatro están vacíos y se dejan así.
+    '/zirkel/zirkel-logo.png',
+    '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg', '8.jpg', '9.jpg',
+    '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg',
+    '18.jpg', '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg',
+    '26.jpg', '27.jpg', '28.jpg', '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg',
+    '34.jpg', '35.jpg', '36.jpg', '37.jpg', '38.jpg', '39.jpg', '40.jpg', '41.jpg',
+    '42.jpg', '43.jpg', '44.jpg',
+  ],
 ];
+
+// Subtítulos por sala. Solo la 5 los trae; las otras van sin texto, y una sala
+// sin entrada acá simplemente no muestra nada. Se guardan aparte de la lista de
+// archivos para no convertir cada nombre en un par y ensuciar las cuatro salas
+// que no los usan.
+const SUBTITULOS_PRESENTACION: Record<number, Record<number, string>> = {
+  4: {
+    0: 'Diseño Paramétrico Estructural',
+    1: 'Análisis con Karamba3D',
+    2: 'Programación Visual Grasshopper',
+    3: 'Optimización Topológica',
+  },
+};
 
 const crearSalaConMedia = (index: number, archivos: string[]): BoxData => ({
   id: `box-${Date.now()}-${index}`,
   name: `Presentación ${index + 1}`,
   slides: archivos.map((archivo, i) => ({
     id: `slide-${Date.now()}-${index}-${i}`,
-    imageUrl: `/presentacion-rev3/s${index + 1}/${archivo}`,
-    subtitle: '',
+    // Un nombre suelto vive en la carpeta de la sala; uno que ya empieza con /
+    // es un asset compartido —el logo, por ejemplo— y se usa tal cual, en vez
+    // de duplicarlo dentro de cada sala que lo necesite.
+    imageUrl: archivo.startsWith('/') ? archivo : `/presentacion-rev3/s${index + 1}/${archivo}`,
+    subtitle: SUBTITULOS_PRESENTACION[index]?.[i] ?? '',
   })),
   floorImageUrl: PISO_SALA,
   ceilingImageUrl: TECHO_SALA,

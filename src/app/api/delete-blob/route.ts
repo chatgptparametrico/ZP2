@@ -4,11 +4,16 @@ import { createClient } from '@supabase/supabase-js';
 const BUCKET_NAME = 'zirkelp-storage';
 
 export async function POST(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://emmzeeahlxfctyfkmybk.supabase.co";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtbXplZWFobHhmY3R5ZmtteWJrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjY5NTUyOSwiZXhwIjoyMDkyMjcxNTI5fQ.kLcpfVnlxsMzWInSTeaTb7Z1-__0zqM9Zz3dIkPBOKQ" || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Las credenciales salen SOLO del entorno. Hubo acá una service_role escrita
+  // a mano como respaldo «para que el deploy anduviera»: esa clave saltea Row
+  // Level Security por completo, y el repo es público. Si falta la variable, la
+  // ruta tiene que fallar y decirlo, no seguir con una llave incrustada.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.json({ error: 'Supabase credentials not configured' }, { status: 500 });
+    console.error('Missing Supabase credentials');
+    return NextResponse.json({ error: 'Supabase credentials not configured on server' }, { status: 500 });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
