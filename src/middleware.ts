@@ -16,6 +16,10 @@ import { COOKIE_ROL } from '@/lib/rol';
 // saltear tocando cookies desde el navegador: la cookie de sesión va firmada.
 
 const MATERIAL_RESERVADO = '/presentacion-rev3';
+// El panel de optimización es más restringido que el material: gasta crédito de
+// una API paga y guarda una clave. Los docentes ven el material pero no
+// administran, así que acá no entran.
+const SOLO_ADMIN = ['/optimizar', '/api/clave-ia', '/api/revisar-laminas'];
 
 /** Cookie de sesión (firmada) + cookie de rol (legible, solo para la interfaz). */
 function sellar(respuesta: NextResponse, token: string, rol: Rol) {
@@ -43,6 +47,7 @@ export async function middleware(request: NextRequest) {
   if (!(await estadoPorton()).activo) return NextResponse.next();
 
   const pideMaterial = request.nextUrl.pathname.startsWith(MATERIAL_RESERVADO);
+  const pidePanel = SOLO_ADMIN.some((r) => request.nextUrl.pathname.startsWith(r));
 
   // Llegó con ticket: admin desde zirkeldep, o docente con su enlace personal.
   const ticket = request.nextUrl.searchParams.get('t');
@@ -59,12 +64,14 @@ export async function middleware(request: NextRequest) {
 
   // Ya tiene sesión: pasa. El material, solo si es de la casa.
   if (rol) {
+    if (pidePanel && rol !== 'admin') return new NextResponse(null, { status: 404 });
     if (pideMaterial && rol === 'publico') return new NextResponse(null, { status: 404 });
     return NextResponse.next();
   }
 
-  // Sin sesión: el material ni se asoma.
-  if (pideMaterial) return new NextResponse(null, { status: 404 });
+  // Sin sesión: ni el material ni el panel se asoman. 404 y no 403: un 403
+  // confirma que la ruta existe, y no hace falta contarlo.
+  if (pideMaterial || pidePanel) return new NextResponse(null, { status: 404 });
 
   // Primera visita: la portada cuenta de qué se trata, deja entrar a mirar y
   // ofrece pedir acceso docente. No pide nada para pasar.
