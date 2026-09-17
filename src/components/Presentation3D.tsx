@@ -2214,12 +2214,17 @@ export default function Presentation3D() {
         </>
       )}
 
-      {/* Current subtitle display when inside box - always visible regardless of UI toggle */}
-      {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length && (
+      {/* Subtítulo de la lámina. En los modos 0 y 1 se ve siempre: si la lámina no
+          tiene texto muestra su número, para saber dónde se está. En el modo 2
+          (proyección limpia) ese número de relleno sobra: si la lámina no tiene
+          subtítulo propio, el cartel no aparece. */}
+      {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length &&
+        (mostrarNavegacion || !!boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle?.trim()) && (
         <div
           /* Con el menú oculto aparece la barra de láminas pegada al borde, así
-             que el subtítulo sube para no quedar encima de ella. */
-          className={`absolute ${showAllUI ? 'bottom-4' : 'bottom-14'} left-1/2 -translate-x-1/2 pointer-events-auto z-20 w-full max-w-2xl px-4 flex justify-center`}
+             que el subtítulo sube para no quedar encima de ella. En el modo 2 la
+             barra ya no está y vuelve abajo. */
+          className={`absolute ${showAllUI || !mostrarNavegacion ? 'bottom-4' : 'bottom-14'} left-1/2 -translate-x-1/2 pointer-events-auto z-20 w-full max-w-2xl px-4 flex justify-center`}
         >
           <div className="text-center relative group">
             {getCurrentLinkUrl() ? (
