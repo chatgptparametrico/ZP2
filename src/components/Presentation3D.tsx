@@ -2214,12 +2214,14 @@ export default function Presentation3D() {
         </>
       )}
 
-      {/* Subtítulo de la lámina. En los modos 0 y 1 se ve siempre: si la lámina no
-          tiene texto muestra su número, para saber dónde se está. En el modo 2
-          (proyección limpia) ese número de relleno sobra: si la lámina no tiene
-          subtítulo propio, el cartel no aparece. */}
+      {/* Subtítulo de la lámina, según el modo de interfaz:
+            · completo (0): siempre, y si la lámina no tiene texto muestra su
+              número, que ahí sirve para saber dónde se está;
+            · reducido (1, el de las flechas): nunca — el cartel tapa la lámina
+              y las flechas alcanzan para moverse;
+            · limpio (2): sólo si la lámina tiene subtítulo propio. */}
       {isInsideBox && boxes[currentBoxIndex] && currentSlideIndex < boxes[currentBoxIndex].slides.length &&
-        (mostrarNavegacion || !!boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle?.trim()) && (
+        (showAllUI || (!mostrarNavegacion && !!boxes[currentBoxIndex].slides[currentSlideIndex]?.subtitle?.trim())) && (
         <div
           /* Con el menú oculto aparece la barra de láminas pegada al borde, así
              que el subtítulo sube para no quedar encima de ella. En el modo 2 la
