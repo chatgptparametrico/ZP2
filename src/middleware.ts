@@ -8,14 +8,16 @@ import { COOKIE_ROL } from '@/lib/rol';
 
 // ── Quién entra y qué ve ────────────────────────────────────────────────────
 // La app es de uso público: cualquiera pasa y arma su propia presentación. Lo
-// que se protege es el MATERIAL del congreso, que vive en /presentacion-rev3.
+// que se protege es el MATERIAL del congreso, que vive en /presentacion-rev*.
 //   · admin   — llega con ticket desde zirkeldep.com
 //   · docente — llega con su enlace personal, habilitado desde el panel
 //   · publico — todos los demás; ven la app vacía
 // Esto corre en el servidor (Edge), así que el bloqueo del material no se puede
 // saltear tocando cookies desde el navegador: la cookie de sesión va firmada.
 
-const MATERIAL_RESERVADO = '/presentacion-rev3';
+// Todas las versiones del material (rev2, rev3, rev4...): el prefijo cubre las
+// que vengan sin tener que acordarse de sumarlas acá.
+const MATERIAL_RESERVADO = '/presentacion-rev';
 // El panel de optimización es más restringido que el material: gasta crédito de
 // una API paga y guarda una clave. Los docentes ven el material pero no
 // administran, así que acá no entran.
