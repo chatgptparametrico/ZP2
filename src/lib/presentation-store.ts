@@ -74,14 +74,14 @@ const PISO_SALA = '/zirkel/piso-zirkel.jpg';
 const TECHO_SALA = '/zirkel/techo-lucarna.jpg';
 // Los techos de la presentación por defecto: uno por sala, en rotación si hay
 // más salas que techos. Las salas vacías siguen con la lucarna de siempre.
-// Imágenes del telescopio Webb (NASA, ESA, CSA, STScI), de dominio público:
-// los «acantilados cósmicos» de la Nebulosa de Carina y los dos paneles —
-// infrarrojo cercano y medio— de la Nebulosa del Anillo Sur. Recortadas en
-// cuadrado a 1024 px o menos: el techo ocupa una franja chica de la pantalla.
+// Imágenes de la NASA, de dominio público: los «acantilados cósmicos» de la
+// Nebulosa de Carina y la Nebulosa del Anillo Sur (Webb), y la galaxia del
+// Remolino, M51 (Hubble). Recortadas en cuadrado a 1024 px o menos: el techo
+// ocupa una franja chica de la pantalla.
 const TECHOS_SALAS: string[] = [
   '/zirkel/techo-carina.jpg',
   '/zirkel/techo-anillo-sur-nir.jpg',
-  '/zirkel/techo-anillo-sur-mir.jpg',
+  '/zirkel/techo-remolino.jpg',
 ];
 
 const createDefaultBox = (index: number): BoxData => ({
