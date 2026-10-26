@@ -100,115 +100,28 @@ const createDefaultBox = (index: number): BoxData => ({
 });
 
 // ── Contenido por defecto de la presentación ──────────────────────────
-// Sale del JSON exportado desde la propia app el 18-sep-2026: 3 salas de
-// 14/31/39 láminas, con sus nombres y subtítulos. El material vive en
-// public/presentacion-rev4/s1..s3, numerado por orden de lámina; imágenes a
-// 1024x576 y videos a 1280 de ancho con audio mono, y ninguna pieza quedó más
-// pesada que en el JSON (si recomprimir no achicaba, quedó el original).
+// Sale del PDF «La Salle [PRESENTACION FINAL]» (26-oct-2026): 202 láminas sobre
+// el completamiento de las torres de la Catedral de La Plata, agrupadas en 4
+// salas por tema. El material vive en public/presentacion-rev5/s1..s4,
+// numerado por orden de lámina: cada página renderizada a 1024x576 sin la barra
+// lateral de miniaturas (lo que queda se centra sobre negro, como el fondo del
+// mazo). El «¡Gracias!» quedó como última lámina de la última sala.
 // Cada lámina es [archivo] o [archivo, subtítulo]: sin subtítulo, el cartel
 // del modo limpio no aparece.
 type LaminaPorDefecto = [archivo: string, subtitulo?: string];
 
+const laminasNumeradas = (cantidad: number): LaminaPorDefecto[] =>
+  Array.from({ length: cantidad }, (_, i) => [`${i + 1}.jpg`]);
+
 const SALAS_PRESENTACION: { nombre: string; laminas: LaminaPorDefecto[] }[] = [
-  {
-    nombre: 'Presentación 1',
-    laminas: [
-      ['1.jpg', '1'],
-      ['2.mp4'],
-      ['3.mp4', '3'],
-      ['4.mp4', '4'],
-      ['5.mp4', '9'],
-      ['6.jpg'],
-      ['7.jpg'],
-      ['8.mp4', '11'],
-      ['9.mp4', '12'],
-      ['10.jpg', '13'],
-      ['11.mp4', '14'],
-      ['12.mp4', '15'],
-      ['13.jpg', '16'],
-      ['14.jpg', '18'],
-    ],
-  },
-  {
-    nombre: 'Presentación 2',
-    laminas: [
-      ['1.jpg', '19'],
-      ['2.jpg', '20'],
-      ['3.jpg', '21'],
-      ['4.jpg', '22'],
-      ['5.jpg', '23'],
-      ['6.jpg', '24'],
-      ['7.jpg', '25'],
-      ['8.jpg', '26'],
-      ['9.jpg', '27'],
-      ['10.jpg', '28'],
-      ['11.jpg', '29'],
-      ['12.jpg', '30'],
-      ['13.jpg', '31'],
-      ['14.jpg', '32'],
-      ['15.jpg', '33'],
-      ['16.jpg', '34'],
-      ['17.jpg', '35'],
-      ['18.jpg', '36'],
-      ['19.jpg', '37'],
-      ['20.jpg', '38'],
-      ['21.jpg', '39'],
-      ['22.jpg', '40'],
-      ['23.jpg', '41'],
-      ['24.jpg', '42'],
-      ['25.jpg', '43'],
-      ['26.jpg', '44'],
-      ['27.jpg', '45'],
-      ['28.jpg', '46'],
-      ['29.jpg', '47'],
-      ['30.jpg', '48'],
-      ['31.jpg', '49'],
-    ],
-  },
-  {
-    nombre: 'Presentación 5',
-    laminas: [
-      ['1.jpg', '1'],
-      ['2.jpg'],
-      ['3.jpg'],
-      ['4.jpg', 'Optimización Topológica'],
-      ['5.jpg'],
-      ['6.jpg'],
-      ['7.png'],
-      ['8.mp4'],
-      ['9.jpg'],
-      ['10.jpg'],
-      ['11.jpg'],
-      ['12.jpg'],
-      ['13.jpg'],
-      ['14.jpg'],
-      ['15.jpg'],
-      ['16.jpg'],
-      ['17.jpg'],
-      ['18.jpg'],
-      ['19.jpg'],
-      ['20.jpg'],
-      ['21.jpg'],
-      ['22.jpg'],
-      ['23.jpg'],
-      ['24.jpg'],
-      ['25.jpg'],
-      ['26.jpg'],
-      ['27.jpg'],
-      ['28.jpg'],
-      ['29.jpg'],
-      ['30.jpg'],
-      ['31.jpg'],
-      ['32.jpg'],
-      ['33.jpg'],
-      ['34.jpg'],
-      ['35.jpg'],
-      ['36.jpg'],
-      ['37.jpg'],
-      ['38.jpg'],
-      ['39.jpg'],
-    ],
-  },
+  // Portada, contexto, fundaciones, ábside, fachada 1999, idea inicial y antecedentes.
+  { nombre: 'Historia y contexto', laminas: laminasNumeradas(22) },
+  // Etapas, túnel de viento, estructura metálica de las torres y avance de obra.
+  { nombre: 'Estructura metálica y obra', laminas: laminasNumeradas(64) },
+  // Pináculos, ventanas y ornamentos en símil piedra: diseño, fabricación y obra civil.
+  { nombre: 'Símil piedra', laminas: laminasNumeradas(59) },
+  // Campanario, fachada, esculturas y ornamentación y cubierta de cobre.
+  { nombre: 'Campanario, fachada y cobre', laminas: laminasNumeradas(57) },
 ];
 
 const crearSalaConMedia = (index: number, sala: { nombre: string; laminas: LaminaPorDefecto[] }): BoxData => ({
@@ -218,7 +131,7 @@ const crearSalaConMedia = (index: number, sala: { nombre: string; laminas: Lamin
     id: `slide-${Date.now()}-${index}-${i}`,
     // Un nombre suelto vive en la carpeta de la sala; uno que ya empieza con /
     // es un asset compartido y se usa tal cual.
-    imageUrl: archivo.startsWith('/') ? archivo : `/presentacion-rev4/s${index + 1}/${archivo}`,
+    imageUrl: archivo.startsWith('/') ? archivo : `/presentacion-rev5/s${index + 1}/${archivo}`,
     subtitle: subtitulo ?? '',
   })),
   floorImageUrl: PISO_SALA,
@@ -247,7 +160,7 @@ const salasSegunRol = (): BoxData[] =>
   esDeLaCasa(rolActual()) ? crearSalasIniciales() : crearSalasVacias();
 
 export const usePresentationStore = create<PresentationState>((set, get) => ({
-  // Arranca con la presentación cargada: 3 salas con todo el material en las
+  // Arranca con la presentación cargada: 4 salas con todo el material en las
   // paredes. Con "Nueva Sala" se agregan las que hagan falta.
   boxes: salasSegunRol(),
   currentBoxIndex: 0,
