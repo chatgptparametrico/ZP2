@@ -17,6 +17,16 @@ export const COOKIE_ROL = 'zirkel_rol';
 /** Los que ven el material del congreso y pueden guardar en el servidor. */
 export const esDeLaCasa = (rol: Rol): boolean => rol === 'admin' || rol === 'docente';
 
+// La presentación por defecto (La Salle, /presentacion-rev5) quedó abierta a todo
+// el mundo hasta las 18 h del 26-oct-2026; desde ahí es solo de administradores
+// (ni docentes). Se cierra sola por la hora: no hace falta otro despliegue.
+export const MATERIAL_DEFECTO = '/presentacion-rev5';
+export const MATERIAL_DEFECTO_PUBLICO_HASTA = Date.parse('2026-10-26T18:00:00-03:00');
+
+/** Quién ve la presentación por defecto ahora mismo. */
+export const veLaPresentacion = (rol: Rol | null, ahora = Date.now()): boolean =>
+  rol === 'admin' || ahora < MATERIAL_DEFECTO_PUBLICO_HASTA;
+
 /** Lee el rol en el navegador. Fuera del navegador asume público, que es lo prudente. */
 export function rolActual(): Rol {
   if (typeof document === 'undefined') return 'publico';

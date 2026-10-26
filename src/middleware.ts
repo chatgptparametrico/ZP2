@@ -4,7 +4,7 @@ import {
   COOKIE_PORTON, HORAS_VALIDEZ, emitirToken, estadoPorton, rolDelTicket, rolDelToken,
   type Rol,
 } from '@/lib/gate';
-import { COOKIE_ROL } from '@/lib/rol';
+import { COOKIE_ROL, MATERIAL_DEFECTO, veLaPresentacion } from '@/lib/rol';
 
 // ── Quién entra y qué ve ────────────────────────────────────────────────────
 // La app es de uso público: cualquiera pasa y arma su propia presentación. Lo
@@ -49,6 +49,7 @@ export async function middleware(request: NextRequest) {
   if (!(await estadoPorton()).activo) return NextResponse.next();
 
   const pideMaterial = request.nextUrl.pathname.startsWith(MATERIAL_RESERVADO);
+  const pideDefecto = request.nextUrl.pathname.startsWith(MATERIAL_DEFECTO);
   const pidePanel = SOLO_ADMIN.some((r) => request.nextUrl.pathname.startsWith(r));
 
   // Llegó con ticket: admin desde zirkeldep, o docente con su enlace personal.
@@ -63,6 +64,12 @@ export async function middleware(request: NextRequest) {
   }
 
   const rol = await rolDelToken(request.cookies.get(COOKIE_PORTON)?.value);
+
+  // La presentación por defecto tiene su propia regla: abierta hasta una hora
+  // y después solo admin (ver veLaPresentacion en lib/rol).
+  if (pideDefecto) {
+    return veLaPresentacion(rol) ? NextResponse.next() : new NextResponse(null, { status: 404 });
+  }
 
   // Ya tiene sesión: pasa. El material, solo si es de la casa.
   if (rol) {

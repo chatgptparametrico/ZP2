@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { esDeLaCasa, rolActual } from './rol';
+import { rolActual, veLaPresentacion } from './rol';
 
 export interface SlideData {
   id: string;
@@ -157,7 +157,7 @@ export const crearSalasIniciales = (): BoxData[] =>
 // armar la suya: el material del congreso además lo bloquea el servidor, así que
 // esto es lo que se ve, no lo que protege.
 const salasSegunRol = (): BoxData[] =>
-  esDeLaCasa(rolActual()) ? crearSalasIniciales() : crearSalasVacias();
+  veLaPresentacion(rolActual()) ? crearSalasIniciales() : crearSalasVacias();
 
 export const usePresentationStore = create<PresentationState>((set, get) => ({
   // Arranca con la presentación cargada: 4 salas con todo el material en las

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { usePresentationStore, crearSalasIniciales, crearSalasVacias } from '@/lib/presentation-store';
-import { esDeLaCasa, rolActual } from '@/lib/rol';
+import { esDeLaCasa, rolActual, veLaPresentacion } from '@/lib/rol';
 
 // ── Encuadre de la lámina dentro de la sala ─────────────────────────────────
 // Mismas medidas que usan createBox/createInsideView: la sala es un cubo de 8 con
@@ -338,6 +338,8 @@ export default function Presentation3D() {
   // el material del congreso lo bloquea el servidor.
   const [deLaCasa, setDeLaCasa] = useState(false);
   useEffect(() => { setDeLaCasa(esDeLaCasa(rolActual())); }, []);
+  const [conPresentacion, setConPresentacion] = useState(false);
+  useEffect(() => { setConPresentacion(veLaPresentacion(rolActual())); }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -2419,7 +2421,7 @@ export default function Presentation3D() {
               vacias para armar una presentacion desde cero. */}
           <div className={`flex gap-2 items-center ${currentTheme.panelBg} backdrop-blur-md rounded-xl px-2 py-1 border ${currentTheme.border}`}>
             <span className={`text-xs ${currentTheme.textMuted} pr-1`}>Reiniciar</span>
-            {deLaCasa && (
+            {conPresentacion && (
               <button
                 onClick={() => reiniciarContenido('presentacion')}
                 title="Vuelve a cargar la presentación que viene con la app"
